@@ -17,7 +17,6 @@ class File extends Model
         'original_name',
         'extension',
         'path',
-        'inspectionDate'
     ];
 
     protected $appends = [

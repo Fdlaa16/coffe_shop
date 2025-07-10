@@ -13,7 +13,17 @@ return new class extends Migration
     {
         Schema::create('invoice_items', function (Blueprint $table) {
             $table->id();
+            $table->nullableMorphs('itemable');
+
+            $table->string('code')->nullable();
+            $table->unsignedBigInteger('invoice_id')->nullable();
+            $table->string('qty')->nullable();
+            $table->string('total')->nullable();
+            $table->string('status')->nullable();
             $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['itemable_id', 'itemable_type', 'type']);
         });
     }
 
