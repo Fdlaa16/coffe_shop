@@ -17,6 +17,7 @@ class File extends Model
         'original_name',
         'extension',
         'path',
+        'inspectionDate'
     ];
 
     protected $appends = [
@@ -36,8 +37,8 @@ class File extends Model
     ];
 
     public static $file_directories = [
-        'food_photos' => 'food_photos/',
-        'drink_photos' => 'drink_photos/',
+        'food_photo' => 'food_photo/',
+        'drink_photo' => 'drink_photo/',
     ];
 
     public function getDirectory($type)

@@ -17,6 +17,7 @@ return new class extends Migration
 
             $table->string('type');
             $table->string('name');
+            $table->text('original_name');
             $table->string('extension');
             $table->string('path');
             $table->timestamps();

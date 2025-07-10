@@ -1,0 +1,487 @@
+<script setup lang="ts">
+import Swal from 'sweetalert2'
+import { computed, onMounted, ref } from 'vue'
+import type { LocationQueryValue } from 'vue-router'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const route = useRoute()
+
+const searchQuery = ref('')
+const selectedClub = ref('')
+const selectedSport = ref('')
+const selectedStatus = ref('')
+const selectedSort = ref('')
+
+const customers = ref<any[]>([])
+const clubs = ref<{ title: string; value: string | number }[]>([])
+const sports = ref<{ title: string; value: string | number }[]>([])
+
+const loading = ref(false)
+const error = ref<string | null>(null)
+const currentPage = ref(1)
+
+const itemsPerPage = 5 
+const isSnackbarVisible = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref<'success' | 'error'>('success')
+
+onMounted(() => {
+  if (route.query.success) {
+    snackbarMessage.value = String(route.query.success)
+    snackbarColor.value = 'success'
+    isSnackbarVisible.value = true
+
+    router.replace({ query: {} })
+  }
+})
+
+const totalPages = computed(() => {
+  return Math.ceil(customers.value.length / itemsPerPage)
+})
+
+const widgetData = ref([
+  { title: 'All', value: 0, icon: 'tabler-user' },
+  { title: 'Active', value: 0, icon: 'tabler-user' },
+  { title: 'Non Active', value: 0, icon: 'tabler-user' },
+])
+
+const headers = [
+  { title: 'ID', key: 'id' },
+  { title: 'Code', key: 'code' },
+  { title: 'Name', key: 'name' },
+  { title: 'Email', key: 'user.email' },
+  { title: 'Phone', key: 'phone' },
+  { title: 'Action', key: 'action', sortable: false },
+]
+
+const paginatedCustomers = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  return customers.value.slice(start, start + itemsPerPage)
+})
+
+async function fetchCustomer() {
+  loading.value = true
+  error.value = null
+
+  try {
+    const response = await $api('customer', {
+      method: 'GET',
+      params: {
+        search: searchQuery.value,
+        status: selectedStatus.value,
+        sort: selectedSort.value,
+      },
+    })
+
+    customers.value = response.data 
+    const totals = response.totals
+
+    widgetData.value = [
+      { title: 'All', value: totals.all, icon: 'tabler-user', iconColor: 'primary', change: 0, desc: 'Total semua club' },
+      { title: 'Active', value: totals.active, icon: 'tabler-user', iconColor: 'success', change: 0, desc: 'Club aktif' },
+      { title: 'Non Active', value: totals.in_active, icon: 'tabler-user', iconColor: 'error', change: 0, desc: 'Club tidak aktif' },
+    ]
+
+  } catch (err: any) {
+    error.value = err.message || 'Gagal memuat data'
+  } finally {
+    loading.value = false
+  }
+}
+
+function editCustomer(customer: any) {
+  router.push({ name: 'dashboards-customer-edit-id', params: { id: customer.id } })
+}
+
+async function deleteCustomer(customer: any) {
+  const confirm = await Swal.fire({
+    title: 'Apakah kamu yakin?',
+    text: `Data Customer dengan nama ${customer.name} akan dihapus.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, hapus!',
+    cancelButtonText: 'Batal',
+    customClass: {
+      confirmButton: 'swal2-confirm-btn',
+      cancelButton: 'swal2-cancel-btn',
+    },
+  })
+
+  if (confirm.isConfirmed) {
+    try {
+      loading.value = true
+
+      await $api(`customer/${customer.id}`, {
+        method: 'DELETE',
+      })
+
+      await fetchCustomer()
+
+      snackbarMessage.value = 'Customer berhasil dihapus'
+      snackbarColor.value = 'success'
+      isSnackbarVisible.value = true
+    } catch (err: any) {
+      snackbarMessage.value = err?.response?.data?.message || 'Gagal menghapus Customer'
+      snackbarColor.value = 'error'
+      isSnackbarVisible.value = true
+    } finally {
+      loading.value = false
+    }
+  }
+}
+
+async function activateCustomer(customer: any) {
+  const confirm = await Swal.fire({
+    title: 'Aktifkan Customer?',
+    text: `Customer ${customer.name} akan diaktifkan kembali.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, aktifkan!',
+    cancelButtonText: 'Batal',
+    customClass: {
+      confirmButton: 'swal2-confirm-btn',
+      cancelButton: 'swal2-cancel-btn',
+    },
+  })
+
+  if (confirm.isConfirmed) {
+    try {
+      loading.value = true
+
+      await $api(`customer/${customer.id}/active`, {
+        method: 'PUT',
+      })
+
+      await fetchCustomer()
+
+      snackbarMessage.value = 'Customer berhasil diaktifkan kembali'
+      snackbarColor.value = 'success'
+      isSnackbarVisible.value = true
+    } catch (err: any) {
+      snackbarMessage.value = err?.response?.data?.message || 'Gagal mengaktifkan Customer'
+      snackbarColor.value = 'error'
+      isSnackbarVisible.value = true
+    } finally {
+      loading.value = false
+    }
+  }
+}
+
+async function approveCustomer(customer: any) {
+  const result = await Swal.fire({
+    title: 'Terima Customer?',
+    text: `Customer ${customer.name} akan diterima?.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, terima!',
+    cancelButtonText: 'Batal',
+    customClass: {
+      confirmButton: 'swal2-confirm-btn',
+      cancelButton: 'swal2-cancel-btn',
+    },
+  })
+
+  if (result.isConfirmed) {
+    $api(`customer/${customer.id}/approve`, {
+      method: 'PUT',
+    })
+      .then(() => {
+        fetchCustomer()
+        snackbarMessage.value = 'Customer diterima'
+        snackbarColor.value = 'success'
+        isSnackbarVisible.value = true
+      })
+      .catch((err: any) => {
+        snackbarMessage.value = err?.response?.data?.message || 'Gagal menerima Customer'
+        snackbarColor.value = 'error'
+        isSnackbarVisible.value = true
+      })
+  }
+}
+
+async function rejectCustomer(customer: any) {
+  const result = await Swal.fire({
+    title: 'Tolak Customer?',
+    text: `Customer ${customer.name} akan ditolak?.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, tolak!',
+    cancelButtonText: 'Batal',
+    customClass: {
+      confirmButton: 'swal2-confirm-btn',
+      cancelButton: 'swal2-cancel-btn',
+    },
+  })
+
+  if (result.isConfirmed) {
+    $api(`customer/${customer.id}/reject`, {
+      method: 'PUT',
+    })
+      .then(() => {
+        fetchCustomer()
+        snackbarMessage.value = 'Customer ditolak'
+        snackbarColor.value = 'success'
+        isSnackbarVisible.value = true
+      })
+      .catch((err: any) => {
+        snackbarMessage.value = err?.response?.data?.message || 'Gagal menolak Customer'
+        snackbarColor.value = 'error'
+        isSnackbarVisible.value = true
+      })
+  }
+}
+
+
+function getQueryParam(param: LocationQueryValue | LocationQueryValue[] | undefined): string {
+  return Array.isArray(param) ? param[0] || '' : param || ''
+}
+
+onMounted(() => {
+  searchQuery.value = getQueryParam(route.query.search)
+  selectedStatus.value = getQueryParam(route.query.status)
+  selectedSort.value = getQueryParam(route.query.sort)
+
+  fetchCustomer()
+})
+
+watch([searchQuery, selectedStatus, selectedSort], () => {
+  router.replace({
+    query: {
+      ...route.query,
+      search: searchQuery.value || undefined,
+      status: selectedStatus.value || undefined,
+      sort: selectedSort.value || undefined,
+    },
+  })
+
+  fetchCustomer()
+})
+</script>
+
+<template>
+  <VRow>
+    <VCol cols="12">
+      <div class="d-flex mb-6">
+        <VRow>
+          <template
+            v-for="(data, id) in widgetData"
+            :key="id"
+          >
+            <VCol
+              cols="12"
+              md="4"
+              sm="6"
+            >
+              <VCard>
+                <VCardText>
+                  <div class="d-flex justify-space-between">
+                    <div class="d-flex flex-column gap-y-1">
+                      <div class="text-body-1 text-high-emphasis">
+                        {{ data.title }}
+                      </div>
+                      <div class="d-flex gap-x-2 align-center">
+                        <h4 class="text-h4">
+                          {{ data.value }}
+                        </h4>
+                      </div>
+                      <div class="text-sm">
+                        {{ data.desc }}
+                      </div>
+                    </div>
+                    <VAvatar
+                      :color="data.iconColor"
+                      variant="tonal"
+                      rounded
+                      size="42"
+                    >
+                      <VIcon
+                        :icon="data.icon"
+                        size="26"
+                      />
+                    </VAvatar>
+                  </div>
+                </VCardText>
+              </VCard>
+            </VCol>
+          </template>
+        </VRow>
+      </div>
+
+      <VCard class="mb-6">
+        <VCardItem class="pb-4">
+          <VCardTitle>Customers</VCardTitle>
+        </VCardItem>
+
+        <VCardText>
+          <VRow>
+            <VCol
+              cols="12"
+              sm="3"
+            >
+             <AppTextField
+                v-model="searchQuery"
+                placeholder="Search Customer"
+              />
+            </VCol>
+
+            <VCol
+              cols="12"
+              sm="3"
+            >
+              <AppSelect
+                v-model="selectedStatus"
+                placeholder="Status"
+                clearable
+                clear-icon="tabler-x"
+                single-line
+                :items="[
+                  { title: 'Pilih Status', value: '' },
+                  { title: 'Semua', value: 'all' },
+                  { title: 'Aktif', value: 'active' },
+                  { title: 'Tidak Aktif', value: 'in_active' }
+                ]"
+              />
+            </VCol>
+            
+            <VCol
+              cols="12"
+              sm="3"
+            >
+              <AppSelect
+                v-model="selectedSort"
+                placeholder="Z-A"
+                clearable
+                clear-icon="tabler-x"
+                single-line
+                :items="[
+                  { title: 'Pilih Sort', value: '' },
+                  { title: 'A-Z', value: 'asc' },
+                  { title: 'Z-A', value: 'desc' },
+                ]"
+              />
+            </VCol>
+
+            <VSpacer />
+
+          <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
+            <VBtn
+              prepend-icon="tabler-plus"
+              :to="{ name: 'dashboards-customer-add' }"
+            >
+              Add New Customer
+            </VBtn>
+          </div>
+          </VRow>
+        </VCardText>
+
+        <VDivider />
+
+        <VDataTable
+          :headers="headers"
+          :items="paginatedCustomers"
+          :loading="loading"
+          class="text-no-wrap"
+          :items-per-page="itemsPerPage"
+          hide-default-footer
+        >
+          <template #item.id="{ item }">
+            <div class="text-body-1">{{ item.id }}</div>
+          </template>
+
+          <template #item.code="{ item }">
+            <div class="text-body-1">{{ item.code }}</div>
+          </template>
+
+          <template #item.name="{ item }">
+            <div class="text-body-1">{{ item.name }}</div>
+          </template>
+
+          <template #item.user.email="{ item }">
+            <div class="text-body-1">{{ item.user.email }}</div>
+          </template>
+
+          <template #item.phone="{ item }">
+            <div class="text-body-1">{{ item.phone }}</div>
+          </template>
+
+          <template #item.action="{ item }">
+            <div class="d-flex gap-x-2">
+              <VBtn
+                v-if="!item.deleted_at"
+                icon
+                size="small"
+                color="primary"
+                @click="editCustomer(item)"
+                title="Edit"
+              >
+                <VIcon icon="tabler-pencil" />
+              </VBtn>
+
+              <VBtn  
+                v-if="!item.deleted_at"
+                icon
+                size="small"
+                color="error"
+                @click="deleteCustomer(item)"
+                title="Delete"
+              >
+                <VIcon icon="tabler-trash" />
+              </VBtn>
+              
+              <VBtn
+                v-if="item.deleted_at"
+                icon
+                size="small"
+                color="success"
+                @click="activateCustomer(item)"
+                title="Activate"
+              >
+                <VIcon icon="tabler-check" />
+              </VBtn>
+            </div>
+          </template>
+        </VDataTable>
+
+        <!-- Pagination -->
+        <div class="d-flex justify-end mt-4 mb-3 mr-2">
+          <VPagination
+            v-model="currentPage"
+            :length="totalPages"
+            total-visible="5"
+            color="primary"
+          />
+        </div>
+      </VCard>
+    </VCol>
+  </VRow>
+
+  <VSnackbar
+    v-model="isSnackbarVisible"
+    :color="snackbarColor"
+    location="bottom start"
+    variant="flat"
+    timeout="3000"
+  >
+    {{ snackbarMessage }}
+  </VSnackbar>
+
+</template>
+
+<style lang="scss">
+.swal2-confirm-btn {
+  background-color: #7B68EE !important;
+  color: #ffffff !important;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.375rem;
+}
+
+.swal2-cancel-btn {
+  background-color: #6c757d !important;
+  color: #ffffff !important;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.375rem;
+}
+</style>

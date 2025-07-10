@@ -10,6 +10,7 @@ class Food extends Model
 {
     use HasFactory, Softdeletes;
 
+    protected $table = 'foods';
     protected $fillable = [
         'code',
         'name',
@@ -48,5 +49,15 @@ class Food extends Model
     public function order()
     {
         return $this->belongsTo(Order::class, 'food_id', 'id');
+    }
+
+    public function files()
+    {
+        return $this->morphMany(File::class, 'fileable');
+    }
+
+    public function food_photo()
+    {
+        return $this->morphMany(File::class, 'fileable')->where('type', 'food_photo')->latest()->one();
     }
 }

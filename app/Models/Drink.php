@@ -49,4 +49,14 @@ class Drink extends Model
     {
         return $this->belongsTo(Order::class, 'drink_id', 'id');
     }
+
+    public function files()
+    {
+        return $this->morphMany(File::class, 'fileable');
+    }
+
+    public function drink_photo()
+    {
+        return $this->morphMany(File::class, 'fileable')->where('type', 'drink_photo')->latest()->one();
+    }
 }

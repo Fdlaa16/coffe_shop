@@ -14,8 +14,8 @@ return new class extends Migration
         Schema::create('invoices', function (Blueprint $table) {
             $table->id();
             $table->string('invoice_number')->nullable();
-            $table->string('invoice_date')->nullable();
-            $table->string('expired_date')->nullable();
+            $table->date('invoice_date')->nullable();
+            $table->date('expired_date')->nullable();
             $table->unsignedBigInteger('order_id')->nullable();
             $table->unsignedBigInteger('customer_id')->nullable();
             $table->string('total_net')->nullable();

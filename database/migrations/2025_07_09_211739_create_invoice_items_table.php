@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->nullableMorphs('itemable');
 
+            $table->string('type');
             $table->string('code')->nullable();
             $table->unsignedBigInteger('invoice_id')->nullable();
             $table->string('qty')->nullable();

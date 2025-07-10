@@ -13,7 +13,18 @@ return new class extends Migration
     {
         Schema::create('order_items', function (Blueprint $table) {
             $table->id();
+            $table->nullableMorphs('itemable');
+
+            $table->string('type');
+            $table->string('code')->nullable();
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->string('qty')->nullable();
+            $table->string('price')->nullable();
+            $table->string('status')->nullable();
             $table->timestamps();
+            $table->softDeletes();
+
+            $table->index(['itemable_id', 'itemable_type', 'type']);
         });
     }
 

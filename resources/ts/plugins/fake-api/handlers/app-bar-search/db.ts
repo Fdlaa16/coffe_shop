@@ -69,6 +69,58 @@ export const db: DB = {
       ],
     },
     {
+      title: 'Master Data',
+      category: 'masterData',
+      children: [
+        {
+          url: { name: 'dashboards-customer-list' },
+          icon: 'tabler-user',
+          title: 'Customers',
+        },
+        {
+          url: { name: 'dashboards-customer-edit-id' },
+          icon: 'tabler-user',
+          title: 'Customers',
+        },
+        {
+          url: { name: 'dashboards-food-list' },
+          icon: 'tabler-user',
+          title: 'Foods',
+        },
+        {
+          url: { name: 'dashboards-food-edit-id' },
+          icon: 'tabler-user',
+          title: 'Foods',
+        },
+        {
+          url: { name: 'dashboards-drink-list' },
+          icon: 'tabler-shirt',
+          title: 'Drinks',
+        },
+        {
+          url: { name: 'dashboards-drink-edit-id' },
+          icon: 'tabler-shirt',
+          title: 'Drinks',
+        },
+      ]
+    },
+    {
+      title: 'Order Data',
+      category: 'orderData',
+      children: [
+        {
+          url: { name: 'dashboards-order-list' },
+          icon: 'tabler-user',
+          title: 'Orders',
+        },
+        {
+          url: { name: 'dashboards-order-edit-id' },
+          icon: 'tabler-user',
+          title: 'Orders',
+        },
+      ]
+    },
+    {
       title: 'Apps & Pages',
       category: 'appsPages',
       children: [

@@ -17,6 +17,7 @@ class Invoice extends Model
         'expired_date',
         'order_id',
         'customer_id',
+        'type',
         'total_net',
         'status',
     ];

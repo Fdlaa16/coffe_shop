@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id();
             $table->string('code')->nullable();
             $table->unsignedBigInteger('customer_id')->nullable();
-            $table->string('order_date')->nullable();
+            $table->unsignedBigInteger('table_id')->nullable();
+            $table->date('order_date')->nullable();
             $table->string('total_net')->nullable();
             $table->string('status')->nullable();
             $table->timestamps();
