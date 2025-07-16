@@ -1,0 +1,42 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#2c1810"/>
+  
+  <!-- Coffee cup shadow -->
+  <ellipse cx="100" cy="170" rx="45" ry="8" fill="#8B4513" opacity="0.3"/>
+  
+  <!-- Cup body -->
+  <path d="M 65 140 Q 65 165 100 165 Q 135 165 135 140 L 130 80 Q 130 75 125 75 L 75 75 Q 70 75 70 80 Z" fill="#E6E6FA"/>
+  
+  <!-- Coffee - darker and more diluted -->
+  <path d="M 72 82 Q 72 78 76 78 L 124 78 Q 128 78 128 82 L 128 135 Q 128 155 100 155 Q 72 155 72 135 Z" fill="#3E2723"/>
+  
+  <!-- Coffee surface with slight transparency -->
+  <ellipse cx="100" cy="82" rx="26" ry="6" fill="#5D4037" opacity="0.9"/>
+  
+  <!-- Handle -->
+  <path d="M 135 100 Q 150 100 150 115 Q 150 130 135 130" stroke="#E6E6FA" stroke-width="6" fill="none"/>
+  
+  <!-- Steam -->
+  <path d="M 88 70 Q 83 60 88 50 Q 93 40 88 30" stroke="#FFFFFF" stroke-width="2" fill="none" opacity="0.6"/>
+  <path d="M 100 70 Q 95 60 100 50 Q 105 40 100 30" stroke="#FFFFFF" stroke-width="2" fill="none" opacity="0.6"/>
+  <path d="M 112 70 Q 107 60 112 50 Q 117 40 112 30" stroke="#FFFFFF" stroke-width="2" fill="none" opacity="0.6"/>
+  
+  <!-- Coffee beans decoration -->
+  <ellipse cx="35" cy="45" rx="8" ry="12" fill="#8B4513" transform="rotate(15 35 45)"/>
+  <line x1="35" y1="40" x2="35" y2="50" stroke="#654321" stroke-width="1"/>
+  
+  <ellipse cx="165" cy="55" rx="8" ry="12" fill="#8B4513" transform="rotate(-20 165 55)"/>
+  <line x1="165" y1="50" x2="165" y2="60" stroke="#654321" stroke-width="1"/>
+  
+  <!-- Water droplet symbol -->
+  <path d="M 25 120 Q 25 115 30 115 Q 35 115 35 120 Q 35 125 30 128 Q 25 125 25 120" fill="#87CEEB" opacity="0.7"/>
+  
+  <!-- Flag decoration (American reference) -->
+  <rect x="20" y="140" width="20" height="12" fill="#FF0000" opacity="0.6"/>
+  <rect x="20" y="140" width="20" height="6" fill="#FFFFFF" opacity="0.8"/>
+  <rect x="20" y="140" width="10" height="6" fill="#0000FF" opacity="0.6"/>
+  
+  <!-- Title -->
+  <text x="100" y="190" text-anchor="middle" fill="#D2691E" font-family="Arial, sans-serif" font-size="16" font-weight="bold">AMERICANO</text>
+</svg>

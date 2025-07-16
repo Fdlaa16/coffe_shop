@@ -90,6 +90,12 @@ export default [
         icon: { icon: 'tabler-files' },
         children: [
           {
+            title: 'Home',
+            to: 'front-pages-home',
+            target: '_blank',
+
+          },
+          {
             title: 'Landing',
             to: 'front-pages-landing-page',
             target: '_blank',

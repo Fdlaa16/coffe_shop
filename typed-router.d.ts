@@ -109,6 +109,7 @@ declare module 'vue-router/auto-routes' {
     'front-pages-checkout': RouteRecordInfo<'front-pages-checkout', '/front-pages/checkout', Record<never, never>, Record<never, never>>,
     'front-pages-help-center': RouteRecordInfo<'front-pages-help-center', '/front-pages/help-center', Record<never, never>, Record<never, never>>,
     'front-pages-help-center-article-title': RouteRecordInfo<'front-pages-help-center-article-title', '/front-pages/help-center/article/:title', { title: ParamValue<true> }, { title: ParamValue<false> }>,
+    'front-pages-home': RouteRecordInfo<'front-pages-home', '/front-pages/home', Record<never, never>, Record<never, never>>,
     'front-pages-landing-page': RouteRecordInfo<'front-pages-landing-page', '/front-pages/landing-page', Record<never, never>, Record<never, never>>,
     'front-pages-payment': RouteRecordInfo<'front-pages-payment', '/front-pages/payment', Record<never, never>, Record<never, never>>,
     'front-pages-pricing': RouteRecordInfo<'front-pages-pricing', '/front-pages/pricing', Record<never, never>, Record<never, never>>,
