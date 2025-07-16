@@ -111,5 +111,11 @@
         "borderStyle": "solid"
       }
     ]
-  }
+  },
+  "i18n-ally.localesPaths": [
+    "Modules/Dashboard/Resources/lang",
+    "Modules/Order/Resources/lang",
+    "resources/ts/plugins/i18n",
+    "resources/ts/plugins/i18n/locales"
+  ]
 }
