@@ -1,5 +1,6 @@
 <script setup lang="ts">
 
+import axios from 'axios'
 import QRCode from 'qrcode'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -165,33 +166,33 @@ const decreaseQuantity = (productId) => {
   }
 }
 
-const processPayment = () => {
-  if (selectedPayment.value) {
-    setTimeout(() => {
-      currentPage.value = 'success'
-    }, 1000)
-  }
-}
+// const processPayment = () => {
+//   if (selectedPayment.value) {
+//     setTimeout(() => {
+//       currentPage.value = 'success'
+//     }, 1000)
+//   }
+// }
 
-// Payment methods
-const paymentMethods = ref([
-  { id: 'qris', name: 'QRIS', icon: 'tabler-qrcode', info: 'Pembayaran QRIS ke PT. Contoh QRIS' },
-  {
-    id: 'card',
-    name: 'Card',
-    icon: 'tabler-credit-card',
-    options: ['BCA Virtual Account', 'BRI Virtual Account', 'Mandiri Virtual Account']
-  },
-  {
-    id: 'ewallet',
-    name: 'E-Wallet',
-    icon: 'tabler-wallet',
-    options: ['OVO', 'DANA', 'ShopeePay', 'GoPay']
-  }
-])
+// // Payment methods
+// const paymentMethods = ref([
+//   { id: 'qris', name: 'QRIS', icon: 'tabler-qrcode', info: 'Pembayaran QRIS ke PT. Contoh QRIS' },
+//   {
+//     id: 'card',
+//     name: 'Card',
+//     icon: 'tabler-credit-card',
+//     options: ['BCA Virtual Account', 'BRI Virtual Account', 'Mandiri Virtual Account']
+//   },
+//   {
+//     id: 'ewallet',
+//     name: 'E-Wallet',
+//     icon: 'tabler-wallet',
+//     options: ['OVO', 'DANA', 'ShopeePay', 'GoPay']
+//   }
+// ])
 
-const selectedPayment = ref('')
-const selectedPaymentOption = ref('')
+// const selectedPayment = ref('')
+// const selectedPaymentOption = ref('')
 
 const getPaymentMethodName = (methodId) => {
   const method = paymentMethods.value.find(m => m.id === methodId)
@@ -461,6 +462,110 @@ definePage({
     layout: 'blank',
     public: true,
   },
+})
+
+//Baru 13-09-25
+
+
+// Reactive data
+const loading = ref(true)
+const processing = ref(false)
+const error = ref('')
+const paymentMethods = ref([])
+const selectedPayment = ref('')
+const selectedPaymentOption = ref(null)
+
+const paymentForm = ref({
+  customer_name: '',
+  email: '',
+  phone: '',
+  amount: '',
+  product_details: ''
+})
+
+// Computed
+const selectedPaymentMethod = computed(() => {
+  return paymentMethods.value.find(method => method.id === selectedPayment.value)
+})
+
+const isFormValidPayment = computed(() => {
+  const form = paymentForm.value
+  return form.customer_name && 
+         form.email && 
+         form.phone && 
+         form.amount && 
+         form.product_details &&
+         selectedPaymentOption.value
+})
+
+// Methods
+const loadPaymentMethods = async () => {
+  try {
+    loading.value = true
+    error.value = ''
+    
+    const response = await axios.get('/api/payment/methods')
+    
+    if (response.data.success) {
+      paymentMethods.value = response.data.data
+    } else {
+      error.value = response.data.message || 'Gagal memuat metode pembayaran'
+    }
+  } catch (err) {
+    console.error('Error loading payment methods:', err)
+    error.value = 'Terjadi kesalahan saat memuat metode pembayaran'
+  } finally {
+    loading.value = false
+  }
+}
+
+const selectPaymentMethod = (methodId) => {
+  selectedPayment.value = methodId
+  selectedPaymentOption.value = null
+  
+  // Auto select if only one option
+  const method = paymentMethods.value.find(m => m.id === methodId)
+  if (method && method.options?.length === 1) {
+    selectedPaymentOption.value = method.options[0]
+  }
+}
+
+const processPayment = async () => {
+  try {
+    processing.value = true
+    
+    const paymentData = {
+      ...paymentForm.value,
+      payment_method: selectedPaymentOption.value.value
+    }
+    
+    const response = await axios.post('/api/payment/create', paymentData)
+    
+    if (response.data.success) {
+      // Redirect to payment page
+      window.location.href = response.data.data.payment_url
+    } else {
+      alert('Gagal membuat pembayaran: ' + response.data.message)
+    }
+  } catch (err) {
+    console.error('Error processing payment:', err)
+    alert('Terjadi kesalahan saat memproses pembayaran')
+  } finally {
+    processing.value = false
+  }
+}
+
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0
+  }).format(amount)
+}
+
+// Lifecycle
+onMounted(() => {
+  loadPaymentMethods()
 })
 </script>
 
@@ -1265,86 +1370,172 @@ definePage({
             </VCardText>
           </VCard>
 
-          <!-- Payment Methods -->
-          <VCard class="mb-4" elevation="2" rounded="md">
-            <VCardText class="pa-4">
-              <h3 class="text-h6 font-weight-bold mb-4">Metode Pembayaran</h3>
-              
-              <VRow>
-                <VCol 
-                  v-for="method in paymentMethods" 
-                  :key="method.id"
-                  cols="6"
-                  class="mb-3"
-                >
-                  <VCard
-                    :color="selectedPayment === method.id ? 'primary' : 'default'"
-                    :variant="selectedPayment === method.id ? 'flat' : 'outlined'"
-                    rounded="lg"
-                    class="payment-method-card text-center pa-4 cursor-pointer"
-                    elevation="0"
-                    @click="selectedPayment = method.id"
-                  >
-                    <VIcon 
-                      :icon="method.icon" 
-                      size="32"
-                      :color="selectedPayment === method.id ? 'white' : 'grey-darken-2'"
-                      class="mb-2"
-                    />
-                    <p 
-                      class="text-body-2 font-weight-medium mb-0"
-                      :class="selectedPayment === method.id ? 'text-white' : 'text-grey-darken-2'"
-                    >
-                      {{ method.name }}
-                    </p>
-                  </VCard>
-                </VCol>
-              </VRow>
-
-              <!-- Tambahan di bawah VRow -->
-              <VRow v-if="selectedPayment === 'qris'">
-                <VCol cols="12">
-                  <VAlert type="info" border="start" color="primary" elevation="1">
-                    {{ paymentMethods.find(m => m.id === 'qris')?.info }}
-                  </VAlert>
-                </VCol>
-              </VRow>
-
-              <VRow v-if="selectedPayment === 'card'">
-                <VCol cols="12">
-                  <VSelect
-                    v-model="selectedPaymentOption"
-                    :items="paymentMethods.find(m => m.id === 'card')?.options"
-                    label="Pilih Virtual Account"
-                    variant="outlined"
-                  />
-                </VCol>
-              </VRow>
-
-              <VRow v-if="selectedPayment === 'ewallet'">
-                <VCol cols="12">
-                  <VSelect
-                    v-model="selectedPaymentOption"
-                    :items="paymentMethods.find(m => m.id === 'ewallet')?.options"
-                    label="Pilih E-Wallet"
-                    variant="outlined"
-                  />
-                </VCol>
-              </VRow>
-
-              <VAlert
-                v-if="selectedPaymentOption"
-                type="success"
-                border="start"
-                color="green"
-                elevation="1"
-                class="mt-4"
-              >
-                Pembayaran melalui: <strong>{{ selectedPaymentOption }}</strong>
-              </VAlert>
-
-            </VCardText>
+  <VCard class="mb-4" elevation="2" rounded="md">
+    <VCardText class="pa-4">
+      <h3 class="text-h6 font-weight-bold mb-4">Metode Pembayaran</h3>
+      
+      <!-- Loading state -->
+      <div v-if="loading" class="text-center py-4">
+        <VProgressCircular indeterminate color="primary" />
+        <p class="mt-2">Memuat metode pembayaran...</p>
+      </div>
+      
+      <!-- Payment methods grid -->
+      <VRow v-else-if="paymentMethods.length">
+        <VCol 
+          v-for="method in paymentMethods" 
+          :key="method.id"
+          cols="6"
+          sm="4"
+          class="mb-3"
+        >
+          <VCard
+            :color="selectedPayment === method.id ? 'primary' : 'default'"
+            :variant="selectedPayment === method.id ? 'flat' : 'outlined'"
+            rounded="lg"
+            class="payment-method-card text-center pa-4 cursor-pointer"
+            elevation="0"
+            @click="selectPaymentMethod(method.id)"
+          >
+            <VIcon 
+              :icon="method.icon" 
+              size="32"
+              :color="selectedPayment === method.id ? 'white' : 'grey-darken-2'"
+              class="mb-2"
+            />
+            <p 
+              class="text-body-2 font-weight-medium mb-0"
+              :class="selectedPayment === method.id ? 'text-white' : 'text-grey-darken-2'"
+            >
+              {{ method.name }}
+            </p>
           </VCard>
+        </VCol>
+      </VRow>
+
+      <!-- Error state -->
+      <VAlert v-else-if="error" type="error" class="mb-4">
+        {{ error }}
+      </VAlert>
+
+      <!-- Payment options dropdown -->
+      <VRow v-if="selectedPaymentMethod && selectedPaymentMethod.options?.length > 1">
+        <VCol cols="12">
+          <VSelect
+            v-model="selectedPaymentOption"
+            :items="selectedPaymentMethod.options"
+            :label="`Pilih ${selectedPaymentMethod.name}`"
+            variant="outlined"
+            item-title="title"
+            item-value="value"
+            return-object
+          >
+            <template #item="{ props, item }">
+              <VListItem v-bind="props">
+                <template #append>
+                  <VChip size="small" color="info" v-if="item.raw.fee > 0">
+                    +{{ formatCurrency(item.raw.fee) }}
+                  </VChip>
+                  <VChip size="small" color="success" v-else>
+                    Gratis
+                  </VChip>
+                </template>
+              </VListItem>
+            </template>
+          </VSelect>
+        </VCol>
+      </VRow>
+
+      <!-- Selected payment info -->
+      <VAlert
+        v-if="selectedPaymentOption"
+        type="success"
+        border="start"
+        color="green"
+        elevation="1"
+        class="mt-4"
+      >
+        <div class="d-flex justify-space-between align-center">
+          <div>
+            <strong>{{ selectedPaymentOption.title }}</strong>
+            <br>
+            <small class="text-grey-darken-1">{{ selectedPaymentMethod.name }}</small>
+          </div>
+          <div v-if="selectedPaymentOption.fee > 0" class="text-right">
+            <div class="text-caption text-grey-darken-1">Biaya Admin</div>
+            <div class="font-weight-bold">{{ formatCurrency(selectedPaymentOption.fee) }}</div>
+          </div>
+        </div>
+      </VAlert>
+
+      <!-- Payment form -->
+      <VCard v-if="selectedPaymentOption" class="mt-4" variant="outlined">
+        <VCardTitle class="text-h6">Informasi Pembayaran</VCardTitle>
+        <VCardText>
+          <VRow>
+            <VCol cols="12" md="6">
+              <VTextField
+                v-model="paymentForm.customer_name"
+                label="Nama Lengkap"
+                variant="outlined"
+                required
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <VTextField
+                v-model="paymentForm.email"
+                label="Email"
+                type="email"
+                variant="outlined"
+                required
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <VTextField
+                v-model="paymentForm.phone"
+                label="Nomor Telepon"
+                variant="outlined"
+                required
+              />
+            </VCol>
+            <VCol cols="12" md="6">
+              <VTextField
+                v-model="paymentForm.amount"
+                label="Jumlah Pembayaran"
+                type="number"
+                variant="outlined"
+                prefix="Rp"
+                required
+              />
+            </VCol>
+            <VCol cols="12">
+              <VTextarea
+                v-model="paymentForm.product_details"
+                label="Detail Produk/Layanan"
+                variant="outlined"
+                rows="3"
+                required
+              />
+            </VCol>
+          </VRow>
+          
+          <div class="d-flex justify-end mt-4">
+            <VBtn
+              color="primary"
+              size="large"
+              :loading="processing"
+              @click="processPayment"
+              :disabled="!isFormValidPayment"
+            >
+              Bayar Sekarang
+            </VBtn>
+          </div>
+        </VCardText>
+      </VCard>
+
+    </VCardText>
+  </VCard>
+
 
           <!-- Customer Info Summary -->
           <VCard class="mb-4" elevation="2" rounded="md">
@@ -1510,7 +1701,25 @@ definePage({
   </VContainer>
 </template>
 
+
+<script setup>
+
+
+</script>
+
+
 <style scoped>
+
+.payment-method-card {
+  transition: all 0.3s ease;
+  min-height: 100px;
+}
+
+.payment-method-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+}
+
 .logo {
   max-width: 150px; /* atau sesuaikan nilainya */
   height: auto;
@@ -1595,3 +1804,4 @@ definePage({
   border-color: var(--v-primary-base) !important;
 }
 </style>
+

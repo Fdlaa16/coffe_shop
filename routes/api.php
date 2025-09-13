@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\PaymentController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Modules\Dashboard\Http\Controllers\CustomerController;
@@ -66,3 +67,8 @@ Route::delete('order/{id}', [OrderController::class, 'destroy'])->name('order.de
 Route::put('order/{id}/active', [OrderController::class, 'active'])->name('order.active');
 Route::put('order/{id}/approve', [OrderController::class, 'approve'])->name('order.approve');
 Route::put('order/{id}/reject', [OrderController::class, 'reject'])->name('order.reject');
+
+
+Route::get('payment/methods', [PaymentController::class, 'getPaymentMethods']);
+Route::post('payment/create', [PaymentController::class, 'createPayment']);
+Route::post('payment/duitku/callback', [PaymentController::class, 'callback']);
