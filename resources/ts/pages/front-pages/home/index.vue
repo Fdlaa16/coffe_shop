@@ -6,26 +6,40 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const currentStep = ref(0)
+const isPasswordVisible = ref(false)
+const isConfirmPasswordVisible = ref(false)
 
-// Page navigation state
+const isFlatSnackbarVisible = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref<'success' | 'error'>('success')
+const isSnackbarVisible = ref(false)
+const loading = ref(false)
+const menuLoading = ref(false)
+
+const localData = ref({
+  email: '',
+  name: '',
+  phone: '',
+  order_type: 'takeaway',
+  cartItems: [],  
+  method: '',
+  method_name: '',
+  option: '',
+  total_items: 0,
+  subtotal: 0,
+  tax: 0,
+  total_payment: 0
+})
+
 const currentPage = ref('barcode')
 
-// Reactive data for responsive design
 const windowWidth = ref(window.innerWidth)
 const windowHeight = ref(window.innerHeight)
 const isMobile = computed(() => windowWidth.value < 768)
 const isTablet = computed(() => windowWidth.value >= 768 && windowWidth.value < 1024)
 const isDesktop = computed(() => windowWidth.value >= 1024)
-
-// Form and order data
 const customerForm = ref(null)
-const orderType = ref('takeaway') // 'takeaway' or 'delivery'
-
-const customerData = ref({
-  name: '',
-  phone: '',
-  email: ''
-})
 
 // Validation rules
 const nameRules = [
@@ -59,46 +73,45 @@ const formatPhoneNumber = (event: { target: { value: string } }) => {
     value = '0' + value
   }
   
-  customerData.value.phone = value
+  localData.value.phone = value
 }
 
 const isFormValid = computed(() => {
-  return customerData.value.name.length >= 2 && 
-         customerData.value.phone.length >= 10 &&
-         (customerData.value.email === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerData.value.email))
+  return localData.value.name.length >= 2 && 
+         localData.value.phone.length >= 10 &&
+         (localData.value.email === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(localData.value.email))
 })
 
-// Navigation methods
-const cartItems = ref([])
 const barcodeCanvas = ref(null)
+const updateCalculatedValues = () => {
+  const items = localData.value.cartItems
+  
+  localData.value.total_items = items.reduce((total, item) => total + item.qty, 0)
+  localData.value.subtotal = items.reduce((total, item) => total + (item.price * item.qty), 0)
+  localData.value.tax = Math.floor(localData.value.subtotal * 0.1)
+  localData.value.total_payment = localData.value.subtotal + localData.value.tax
+}
 
-// Function to reset all data to initial state
 const resetAllData = () => {
-  // Reset customer data
-  customerData.value = {
+  localData.value = {
+    email: '',
     name: '',
     phone: '',
-    email: ''
+    order_type: 'takeaway',
+    cartItems: [],
+    method: '',
+    method_name: '',
+    option: '',
+    total_items: 0,
+    subtotal: 0,
+    tax: 0,
+    total_payment: 0
   }
   
-  // Reset cart
-  cartItems.value = []
-  
-  // Reset payment data
-  selectedPayment.value = ''
-  selectedPaymentOption.value = ''
-  
-  // Reset order type
-  orderType.value = 'takeaway'
-  
-  // Reset category and search
   selectedCategory.value = 'all'
   searchQuery.value = ''
-  
-  // Reset mobile sidebar
   showMobileSidebar.value = false
   
-  // Reset form validation if form exists
   if (customerForm.value) {
     customerForm.value.reset()
     customerForm.value.resetValidation()
@@ -128,41 +141,56 @@ const submitCustomerData = async () => {
   const { valid } = await customerForm.value.validate()
   
   if (valid) {
-    console.log('Customer data:', customerData.value)
+    console.log('Customer data:', localData.value)
     currentPage.value = 'catalog'
+
+    await fetchMenuData()
   }
 }
 
 const addToCart = (product) => {
-  const existingItem = cartItems.value.find(item => item.id === product.id)
+  const existingItem = localData.value.cartItems.find(item => item.id === product.id)
   if (existingItem) {
-    existingItem.quantity += 1
+    existingItem.qty += 1
   } else {
-    cartItems.value.push({
-      ...product,
-      quantity: 1,
+    localData.value.cartItems.push({
+      id: product.id,
+      menu_id: product.id,
+      menu_name: product.name,
+      name: product.name,
+      qty: 1,
+      price: product.price,
+      subtotal: product.price,
       notes: '',
       size: 'Regular',
-      sugarLevel: 'Normal'
+      sugar_level: 'Normal',
+      sugarLevel: 'Normal', 
+      category: product.type 
     })
   }
+  updateCalculatedValues()
 }
 
 const removeFromCart = (productId) => {
-  cartItems.value = cartItems.value.filter(item => item.id !== productId)
+  localData.value.cartItems = localData.value.cartItems.filter(item => item.id !== productId)
+  updateCalculatedValues()
 }
 
-const increaseQuantity = (productId) => {
-  const item = cartItems.value.find(item => item.id === productId)
+const increaseQty = (productId) => {
+  const item = localData.value.cartItems.find(item => item.id === productId)
   if (item) {
-    item.quantity += 1
+    item.qty += 1
+    item.subtotal = item.price * item.qty
+    updateCalculatedValues()
   }
 }
 
-const decreaseQuantity = (productId) => {
-  const item = cartItems.value.find(item => item.id === productId)
-  if (item && item.quantity > 1) {
-    item.quantity -= 1
+const decreaseQty = (productId) => {
+  const item = localData.value.cartItems.find(item => item.id === productId)
+  if (item && item.qty > 1) {
+    item.qty -= 1
+    item.subtotal = item.price * item.qty
+    updateCalculatedValues()
   }
 }
 
@@ -193,6 +221,102 @@ const decreaseQuantity = (productId) => {
 
 // const selectedPayment = ref('')
 // const selectedPaymentOption = ref('')
+const processPayment = async () => {
+  try {
+    loading.value = true
+    
+    updateCalculatedValues()
+
+    const formData = new FormData()
+    
+    formData.append('name', localData.value.name)
+    formData.append('phone', localData.value.phone)
+    formData.append('email', localData.value.email)
+    
+    formData.append('order_type', localData.value.order_type)
+  
+    localData.value.cartItems.forEach((item, index) => {
+      formData.append(`cartItems[${index}][menu_id]`, item.menu_id.toString())
+      formData.append(`cartItems[${index}][menu_name]`, item.menu_name)
+      formData.append(`cartItems[${index}][qty]`, item.qty.toString())
+      formData.append(`cartItems[${index}][price]`, item.price.toString())
+      formData.append(`cartItems[${index}][subtotal]`, item.subtotal.toString())
+      formData.append(`cartItems[${index}][notes]`, item.notes)
+      formData.append(`cartItems[${index}][size]`, item.size)
+      formData.append(`cartItems[${index}][sugar_level]`, item.sugar_level)
+      formData.append(`cartItems[${index}][category]`, item.category)
+    })
+
+    formData.append('method', localData.value.method)
+    formData.append('method_name', localData.value.method_name)
+    formData.append('option', localData.value.option)
+    
+    formData.append('total_items', localData.value.total_items.toString())
+    formData.append('subtotal', localData.value.subtotal.toString())
+    formData.append('tax', localData.value.tax.toString())
+    formData.append('total_payment', localData.value.total_payment.toString())
+    
+    await $api('order/create', {
+      method: 'POST',
+      body: formData,
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    currentPage.value = 'success'
+    
+  } catch (err: any) {
+    loading.value = false 
+    
+    const errors = err?.data?.errors
+    if (err?.status === 422 && errors) {
+      const messages = Object.values(errors).flat()
+      snackbarMessage.value = 'Validasi gagal: ' + messages.join(', ')
+    } else {
+      snackbarMessage.value =
+        'Gagal mengirim data: ' + (err?.data?.message || err?.message || 'Unknown error')
+    }
+
+    snackbarColor.value = 'error'
+    isFlatSnackbarVisible.value = true
+  } finally {
+    loading.value = false 
+  }
+}
+
+const paymentMethods = ref([
+  { id: 'qris', name: 'QRIS', icon: 'tabler-qrcode', info: 'Pembayaran QRIS ke PT. Contoh QRIS' },
+  {
+    id: 'card',
+    name: 'Card',
+    icon: 'tabler-credit-card',
+    options: ['BCA Virtual Account', 'BRI Virtual Account', 'Mandiri Virtual Account']
+  },
+  {
+    id: 'ewallet',
+    name: 'E-Wallet',
+    icon: 'tabler-wallet',
+    options: ['OVO', 'DANA', 'ShopeePay', 'GoPay']
+  }
+])
+
+const selectedPayment = computed({
+  get: () => localData.value.method,
+  set: (value) => {
+    localData.value.method = value
+    localData.value.method_name = getPaymentMethodName(value)
+    if (!value) {
+      localData.value.option = ''
+    }
+  }
+})
+
+const selectedPaymentOption = computed({
+  get: () => localData.value.option,
+  set: (value) => {
+    localData.value.option = value
+  }
+})
 
 const getPaymentMethodName = (methodId) => {
   const method = paymentMethods.value.find(m => m.id === methodId)
@@ -200,13 +324,8 @@ const getPaymentMethodName = (methodId) => {
 }
 
 const startNewOrder = () => {
-  // Reset all data completely
   resetAllData()
-  
-  // Go to barcode page
   currentPage.value = 'barcode'
-  
-  // Regenerate barcode
   generateBarcode()
 }
 
@@ -215,13 +334,8 @@ const formatPrice = (price) => {
 }
 
 const goBackToBarcode = () => {
-  // Reset all data when going back to barcode
   resetAllData()
-  
-  // Go to barcode page
   currentPage.value = 'barcode'
-  
-  // Regenerate barcode
   generateBarcode()
 }
 
@@ -233,47 +347,34 @@ const goToCart = () => {
   currentPage.value = 'cart'
 }
 
-// Cart computations
 const cartItemsCount = computed(() => {
-  return cartItems.value.reduce((total, item) => total + item.quantity, 0)
+  return localData.value.total_items
 })
 
 const subtotal = computed(() => {
-  return cartItems.value.reduce((total, item) => total + (item.price * item.quantity), 0)
-})
-
-const jiwaPoints = computed(() => {
-  return Math.floor(subtotal.value * 0.022) // 2.2% of subtotal as points
-})
-
-const totalXP = computed(() => {
-  return Math.floor(cartItemsCount.value * 1.5) // 1.5 XP per item
+  return localData.value.subtotal
 })
 
 const tax = computed(() => {
-  return Math.floor(subtotal.value * 0.1) // 10% tax
+  return localData.value.tax
 })
 
 const totalPayment = computed(() => {
-  return subtotal.value + tax.value
+  return localData.value.total_payment
 })
 
-// Mobile sidebar state
 const showMobileSidebar = ref(false)
 
-// Handle window resize
 const handleResize = () => {
   windowWidth.value = window.innerWidth
   windowHeight.value = window.innerHeight
   
-  // Auto close mobile sidebar when resizing to desktop
   if (isDesktop.value) {
     showMobileSidebar.value = false
   }
 }
 
 onMounted(() => {
-  // Initialize with clean state
   resetAllData()
   generateBarcode()
   window.addEventListener('resize', handleResize)
@@ -283,33 +384,29 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
 
-// Close mobile sidebar when clicking outside
 const closeMobileSidebar = () => {
   showMobileSidebar.value = false
 }
 
-// Responsive grid columns computation
 const gridCols = computed(() => {
-  if (isMobile.value) return 2  // Minimum 2 columns on mobile
-  if (isTablet.value) return 3  // 3 columns on tablet
-  return 4  // 4 columns on desktop
+  if (isMobile.value) return 2  
+  if (isTablet.value) return 3  
+  
+  return 4  
 })
 
-// Sidebar width computation
 const sidebarWidth = computed(() => {
-  if (isMobile.value) return '280px'  // Wider for mobile popup
+  if (isMobile.value) return '280px'  
   if (isTablet.value) return '200px'
   return '220px'
 })
 
-// Product card height computation
 const productCardHeight = computed(() => {
   if (isMobile.value) return '240px'
   if (isTablet.value) return '260px'
   return '280px'
 })
 
-// Computed styles
 const sidebarStyle = computed(() => ({
   width: sidebarWidth.value,
   minWidth: sidebarWidth.value,
@@ -351,69 +448,98 @@ const overlayStyle = computed(() => ({
   transition: 'opacity 0.3s ease, visibility 0.3s ease'
 }))
 
-const productsContainerStyle = computed(() => {
-  if (isDesktop.value) {
-    return {
-      marginLeft: sidebarWidth.value,
-      width: `calc(100% - ${sidebarWidth.value})`,
-      padding: '24px',
-      boxSizing: 'border-box',
-      transition: 'margin-left 0.3s ease'
+const menuItems = ref([])
+
+// Dynamic categories based on menu data
+const categories = computed(() => {
+  const uniqueTypes = [...new Set(menuItems.value.map(item => item.type))]
+  const categoryList = [{ id: 'all', name: 'All Items' }]
+  
+  uniqueTypes.forEach(type => {
+    if (type === 'food') {
+      categoryList.push({ id: 'food', name: 'Food' })
+    } else if (type === 'drink') {
+      categoryList.push({ id: 'drink', name: 'Drinks' })
     }
-  }
-
-  return {
-    marginLeft: '0px',
-    width: '100%',
-    padding: '12px',
-    boxSizing: 'border-box'
-  }
+  })
+  
+  return categoryList
 })
-
-// Mock data - categories and products
-const categories = ref([
-  { id: 'all', name: 'All Items' },
-  { id: 'coffee', name: 'Coffee' },
-  { id: 'tea', name: 'Tea' },
-  { id: 'pastry', name: 'Pastries' },
-  { id: 'snacks', name: 'Snacks' }
-])
 
 const selectedCategory = ref('all')
 const searchQuery = ref('')
+const fetchMenuData = async () => {
+  try {
+    menuLoading.value = true
+    
+    const response = await $api('menu', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
 
-// Mock products data
-const products = ref([
-  { id: 1, name: 'Americano', price: 25000, category: 'coffee', isSpecial: false, isCombo: false, isPromo: false },
-  { id: 2, name: 'Cappuccino', price: 35000, category: 'coffee', isSpecial: true, isCombo: false, isPromo: false },
-  { id: 3, name: 'Espresso', price: 20000, category: 'coffee', isSpecial: false, isCombo: false, isPromo: true },
-  { id: 4, name: 'Latte', price: 40000, category: 'coffee', isSpecial: false, isCombo: true, isPromo: false },
-  { id: 5, name: 'Green Tea', price: 18000, category: 'tea', isSpecial: false, isCombo: false, isPromo: false },
-  { id: 6, name: 'Earl Grey', price: 20000, category: 'tea', isSpecial: true, isCombo: false, isPromo: false },
-  { id: 7, name: 'Croissant', price: 15000, category: 'pastry', isSpecial: false, isCombo: false, isPromo: false },
-  { id: 8, name: 'Danish', price: 18000, category: 'pastry', isSpecial: false, isCombo: true, isPromo: false },
-  { id: 9, name: 'Sandwich', price: 25000, category: 'snacks', isSpecial: false, isCombo: false, isPromo: true },
-  { id: 10, name: 'Kopi Susu Sahabat', price: 19000, category: 'coffee', isSpecial: false, isCombo: false, isPromo: false }
-])
+    menuItems.value = response.data.map(item => ({
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      price: parseInt(item.price),
+      type: item.type, 
+      category: item.type, 
+      qty: item.qty,
+      image: item.menu_photo?.url || null, 
+      isSpecial: false, 
+      isCombo: false,     
+      isPromo: false    
+    }))
 
-// Utility methods
+    console.log('Menu data loaded:', menuItems.value)
+    
+  } catch (error) {
+    console.error('Error fetching menu data:', error)
+    snackbarMessage.value = 'Gagal memuat data menu: ' + (error?.data?.message || error?.message || 'Unknown error')
+    snackbarColor.value = 'error'
+    isFlatSnackbarVisible.value = true
+    
+    menuItems.value = []
+  } finally {
+    menuLoading.value = false
+  }
+}
+
+const getProductImageUrl = (product) => {
+  return product.image || product.imageUrl || null
+}
+
+const handleImageError = (event) => {
+  event.target.style.display = 'none'
+  const iconContainer = event.target.parentElement.querySelector('.image-placeholder')
+  if (iconContainer) {
+    iconContainer.style.display = 'flex'
+  }
+}
+
+const handleImageLoad = (event) => {
+  const iconContainer = event.target.parentElement.querySelector('.image-placeholder')
+  if (iconContainer) {
+    iconContainer.style.display = 'none'
+  }
+}
+
+const products = computed(() => menuItems.value)
 const getCategoryIcon = (categoryId: string) => {
   const iconMap = {
     'all': 'tabler-apps',
-    'coffee': 'tabler-coffee',
-    'tea': 'tabler-cup',
-    'pastry': 'tabler-cake',
-    'snacks': 'tabler-cookie'
+    'food': 'tabler-cookie', 
+    'drink': 'tabler-coffee', 
   }
   return iconMap[categoryId] || 'tabler-circle'
 }
 
 const getProductIcon = (category: string) => {
   const iconMap = {
-    'coffee': 'tabler-coffee',
-    'tea': 'tabler-cup',
-    'pastry': 'tabler-cake',
-    'snacks': 'tabler-cookie'
+    'food': 'tabler-cookie',
+    'drink': 'tabler-coffee',
   }
   return iconMap[category] || 'tabler-circle'
 }
@@ -571,7 +697,6 @@ onMounted(() => {
 
 <template>
   <VContainer fluid class="pa-0 fill-height">
-    <!-- BARCODE SCAN PAGE -->
       <VRow
         v-if="currentPage === 'barcode'"
         class="ma-0"
@@ -589,8 +714,8 @@ onMounted(() => {
             <VCardText class="text-center">
               <div class="mb-6">
                 <img
-                  src="/storage/logo/papasans-logo.png"
-                  alt="Logo SSB"
+                  src="/images/logo/papasans.png"
+                  alt="logo papasans"
                   class="me-3 logo"
                 />
                 <p class="text-body-1 text-medium-emphasis">
@@ -622,753 +747,424 @@ onMounted(() => {
         </VCol>
       </VRow>
 
-      <!-- Customer Form Page -->
       <VRow
-  v-if="currentPage === 'customer-form'"
-  class="ma-0"
-  style="min-height: 100vh; width: 100%;"
->
-  <VCol
-    cols="12"
-    class="d-flex align-center justify-center"
-  >
-    <VCard
-      class="pa-8 mx-4"
-      max-width="800"
-      width="100%"
-      elevation="12"
-      style="box-sizing: border-box;"
-    >
-      <VCardText>
-        <div class="text-center mb-8">
-          <VIcon icon="tabler-user" size="64" color="primary" />
-          <h1 class="text-h3 mt-4 mb-2">Data Pembeli</h1>
-          <p class="text-body-1 text-medium-emphasis">
-            Silakan isi data diri Anda dengan lengkap
-          </p>
-        </div>
-
-        <VForm 
-          ref="customerForm"
-          @submit.prevent="submitCustomerData"
-        >
-          <VRow>
-            <VCol cols="12">
-              <VTextField
-                v-model="customerData.name"
-                label="Nama Lengkap"
-                placeholder="Masukkan nama lengkap"
-                prepend-inner-icon="tabler-user"
-                :rules="nameRules"
-                required
-                counter="50"
-                variant="outlined"
-                class="mb-2"
-              />
-            </VCol>
-            
-            <VCol cols="12">
-              <VTextField
-                v-model="customerData.phone"
-                label="Nomor Telepon"
-                placeholder="Contoh: 081234567890"
-                prepend-inner-icon="tabler-phone"
-                :rules="phoneRules"
-                required
-                counter="15"
-                variant="outlined"
-                class="mb-2"
-                @input="formatPhoneNumber"
-              />
-            </VCol>
-            
-            <VCol cols="12">
-              <VTextField
-                v-model="customerData.email"
-                label="Email (Opsional)"
-                placeholder="Contoh: nama@email.com"
-                prepend-inner-icon="tabler-mail"
-                type="email"
-                :rules="emailRules"
-                variant="outlined"
-                class="mb-2"
-              />
-            </VCol>
-          </VRow>
-
-          <div class="d-flex flex-column flex-sm-row justify-space-between mt-8" style="gap: 16px;">
-            <!-- <VBtn
-              color="default"
-              variant="outlined"
-              size="large"
-              @click="goBackToBarcode()"
-              class="flex-grow-1"
-            >
-              <VIcon icon="tabler-arrow-left" start />
-              Kembali
-            </VBtn> -->
-
-            <VBtn
-              color="primary"
-              type="submit"
-              size="large"
-              :disabled="!isFormValid"
-              class="flex-grow-1"
-            >
-              Selanjutnya
-              <VIcon icon="tabler-arrow-right" end />
-            </VBtn>
-          </div>
-        </VForm>
-      </VCardText>
-    </VCard>
-  </VCol>
-</VRow>
-
-
-    <!-- CATALOG PAGE -->
-    <div
-      v-if="currentPage === 'catalog'"
-      class="catalog-page"
-    >
-      <!-- Header -->
-      <VAppBar
-        color="white"
-        elevation="1"
-        class="px-4"
-        style="z-index: 1002;"
-        fixed
+        v-if="currentPage === 'customer-form'"
+        class="ma-0"
+        style="min-height: 100vh; width: 100%;"
       >
-        <!-- Menu Button for Mobile/Tablet or Back Button for Desktop -->
-        <VBtn
-          v-if="!isDesktop"
-          icon="tabler-menu-2"
-          variant="text"
-          @click="showMobileSidebar = !showMobileSidebar"
-        />
-        <VBtn
-          v-else
-          icon="tabler-arrow-left"
-          variant="text"
-          @click="goBackToCustomerForm"
-        />
-        
-        <VSpacer />
-        
-        <!-- Search Bar - Hidden on small mobile -->
-        <VTextField
-          v-if="!isMobile || windowWidth > 500"
-          v-model="searchQuery"
-          placeholder="Search menu"
-          prepend-inner-icon="tabler-search"
-          variant="outlined"
-          hide-details
-          density="compact"
-          rounded="pill"
-          class="mx-4"
-          :style="{ maxWidth: isMobile ? '200px' : '300px' }"
-        />
-        
-        <VSpacer />
-        
-        <VBtn
-          color="primary"
-          variant="elevated"
-          rounded="pill"
-          class="position-relative"
-          @click="goToCart"
+        <VCol
+          cols="12"
+          class="d-flex align-center justify-center"
         >
-          <VIcon icon="tabler-shopping-cart" />
-          <VBadge
-            v-if="cartItemsCount > 0"
-            :content="cartItemsCount"
-            color="warning"
-            floating
+          <VCard
+            class="pa-8 mx-4"
+            max-width="800"
+            width="100%"
+            elevation="12"
+            style="box-sizing: border-box;"
+          >
+            <VCardText>
+              <div class="text-center mb-8">
+                <VIcon icon="tabler-user" size="64" color="primary" />
+                <h1 class="text-h3 mt-4 mb-2">Data Pembeli</h1>
+                <p class="text-body-1 text-medium-emphasis">
+                  Silakan isi data diri Anda dengan lengkap
+                </p>
+              </div>
+
+              <VForm 
+                ref="customerForm"
+                @submit.prevent="submitCustomerData"
+              >
+                <VRow>
+                  <VCol cols="12">
+                    <VTextField
+                      v-model="localData.name"
+                      label="Nama Lengkap"
+                      placeholder="Masukkan nama lengkap"
+                      prepend-inner-icon="tabler-user"
+                      :rules="nameRules"
+                      required
+                      counter="50"
+                      variant="outlined"
+                      class="mb-2"
+                    />
+                  </VCol>
+                  
+                  <VCol cols="12">
+                    <VTextField
+                      v-model="localData.phone"
+                      label="Nomor Telepon"
+                      placeholder="Contoh: 081234567890"
+                      prepend-inner-icon="tabler-phone"
+                      :rules="phoneRules"
+                      required
+                      counter="15"
+                      variant="outlined"
+                      class="mb-2"
+                      @input="formatPhoneNumber"
+                    />
+                  </VCol>
+                  
+                  <VCol cols="12">
+                    <VTextField
+                      v-model="localData.email"
+                      label="Email (Opsional)"
+                      placeholder="Contoh: nama@email.com"
+                      prepend-inner-icon="tabler-mail"
+                      type="email"
+                      :rules="emailRules"
+                      variant="outlined"
+                      class="mb-2"
+                    />
+                  </VCol>
+                </VRow>
+
+                <div class="d-flex flex-column flex-sm-row justify-space-between mt-8" style="gap: 16px;">
+                  <VBtn
+                    color="primary"
+                    type="submit"
+                    size="large"
+                    :disabled="!isFormValid"
+                    class="flex-grow-1"
+                  >
+                    Selanjutnya
+                    <VIcon icon="tabler-arrow-right" end />
+                  </VBtn>
+                </div>
+              </VForm>
+            </VCardText>
+          </VCard>
+        </VCol>
+      </VRow>
+
+      <div
+        v-if="currentPage === 'catalog'"
+        class="catalog-page"
+      >
+        <VAppBar
+          color="white"
+          elevation="1"
+          class="px-4"
+          style="z-index: 1002;"
+          fixed
+        >
+          <VBtn
+            v-if="!isDesktop"
+            icon="tabler-menu-2"
+            variant="text"
+            @click="showMobileSidebar = !showMobileSidebar"
           />
-        </VBtn>
-      </VAppBar>
-
-      <!-- Main Content -->
-      <div class="catalog-container d-flex position-relative" style="padding-top: 64px;">
-        <!-- Desktop Sidebar -->
-        <div 
-          v-if="isDesktop"
-          class="sidebar" 
-          :style="sidebarStyle"
-        >
-          <div class="pa-4">
-            <div class="mb-4">
-              <h3 class="text-h6 font-weight-bold text-grey-darken-3">Categories</h3>
-              <p class="text-body-2 text-grey-darken-1">Choose your favorite items</p>
-            </div>
-
-            <div
-              v-for="category in categories"
-              :key="category.id"
-              class="category-item pa-3 mb-2 rounded-lg cursor-pointer transition-all"
-              :class="getCategoryClass(category.id)"
-              @click="selectCategory(category.id)"
-            >
-              <div class="text-left d-flex align-center">
-                <VIcon
-                  :icon="getCategoryIcon(category.id)"
-                  size="20"
-                  class="mr-3"
-                />
-                <div>
-                  <span class="category-name text-sm font-weight-medium d-block">
-                    {{ category.name }}
-                  </span>
-                  <span class="category-count text-xs opacity-75">
-                    {{ getProductCount(category.id) }} items
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Mobile/Tablet Overlay -->
-        <div
-          v-if="!isDesktop"
-          :style="overlayStyle"
-          @click="closeMobileSidebar"
-        />
-
-        <!-- Mobile/Tablet Sliding Sidebar -->
-        <div
-          v-if="!isDesktop"
-          class="mobile-sidebar"
-          :style="mobileSidebarStyle"
-        >
-          <!-- Close Button -->
-          <div class="d-flex justify-end pa-2 border-bottom">
-            <VBtn
-              icon="tabler-x"
-              variant="text"
-              size="small"
-              @click="closeMobileSidebar"
+          <VBtn
+            v-else
+            icon="tabler-arrow-left"
+            variant="text"
+            @click="goBackToCustomerForm"
+          />
+          
+          <VSpacer />
+          
+          <VTextField
+            v-if="!isMobile || windowWidth > 500"
+            v-model="searchQuery"
+            placeholder="Search menu"
+            prepend-inner-icon="tabler-search"
+            variant="outlined"
+            hide-details
+            density="compact"
+            rounded="pill"
+            class="mx-4"
+            :style="{ maxWidth: isMobile ? '200px' : '300px' }"
+          />
+          
+          <VSpacer />
+          
+          <VBtn
+            color="primary"
+            variant="elevated"
+            rounded="pill"
+            class="position-relative"
+            @click="goToCart"
+          >
+            <VIcon icon="tabler-shopping-cart" />
+            <VBadge
+              v-if="cartItemsCount > 0"
+              :content="cartItemsCount"
+              color="warning"
+              floating
             />
-          </div>
+          </VBtn>
+        </VAppBar>
 
-          <div class="pa-4">
-            <div class="mb-4">
-              <h3 class="text-h6 font-weight-bold text-grey-darken-3">Categories</h3>
-              <p class="text-body-2 text-grey-darken-1">Choose your favorite items</p>
-            </div>
-
-            <div
-              v-for="category in categories"
-              :key="category.id"
-              class="category-item pa-3 mb-2 rounded-lg cursor-pointer transition-all"
-              :class="getCategoryClass(category.id)"
-              @click="selectCategory(category.id)"
-            >
-              <div class="text-left d-flex align-center">
-                <VIcon
-                  :icon="getCategoryIcon(category.id)"
-                  size="20"
-                  class="mr-3"
-                />
-                <div>
-                  <span class="category-name text-sm font-weight-medium d-block">
-                    {{ category.name }}
-                  </span>
-                  <span class="category-count text-xs opacity-75">
-                    {{ getProductCount(category.id) }} items
-                  </span>
-                </div>
+        <div class="catalog-container d-flex position-relative" style="padding-top: 64px;">
+          <div 
+            v-if="isDesktop"
+            class="sidebar" 
+            :style="sidebarStyle"
+          >
+            <div class="pa-4">
+              <div class="mb-4">
+                <h3 class="text-h6 font-weight-bold text-grey-darken-3">Categories</h3>
+                <p class="text-body-2 text-grey-darken-1">Choose your favorite items</p>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- Products Container -->
-        <div 
-          class="products-container"
-          :style="{
-            width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
-            padding: isMobile ? '12px' : '24px',
-            boxSizing: 'border-box',
-            marginLeft: '0px', // Hapus margin left
-            transition: 'width 0.3s ease'
-          }"
-        >
-          <div class="products-header mb-4 d-flex align-center justify-space-between">
-            <div>
-              <h3 
-                class="font-weight-bold"
-                :class="isMobile ? 'text-h6' : 'text-h5'"
-              >
-                {{ getCurrentCategoryName }}
-              </h3>
-              <p class="text-body-2 text-medium-emphasis mt-1">
-                Showing {{ filteredProducts.length }} products
-              </p>
-            </div>
-            
-            <!-- Mobile Search -->
-            <VTextField
-              v-if="isMobile && windowWidth <= 500"
-              v-model="searchQuery"
-              placeholder="Search..."
-              prepend-inner-icon="tabler-search"
-              variant="outlined"
-              density="compact"
-              style="max-width: 150px;"
-              hide-details
-            />
-          </div>
-
-          <!-- Products Grid - Responsive -->
-          <div class="products-grid">
-            <div 
-              class="product-grid-container"
-              :style="{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-                gap: isMobile ? '12px' : '16px'
-              }"
-            >
               <div
-                v-for="product in filteredProducts"
-                :key="product.id"
-                class="product-card-wrapper"
+                v-for="category in categories"
+                :key="category.id"
+                class="category-item pa-3 mb-2 rounded-lg cursor-pointer transition-all"
+                :class="getCategoryClass(category.id)"
+                @click="selectCategory(category.id)"
               >
-                <VCard
-                  class="product-card h-100"
-                  elevation="2"
-                  rounded="md"
-                  :style="{ 
-                    height: productCardHeight, 
-                    transition: 'transform 0.2s ease;'
-                  }"
-                  @mouseover="$event.currentTarget.style.transform = 'translateY(-2px)'"
-                  @mouseleave="$event.currentTarget.style.transform = 'translateY(0)'"
+                <div class="text-left d-flex align-center">
+                  <VIcon
+                    :icon="getCategoryIcon(category.id)"
+                    size="20"
+                    class="mr-3"
+                  />
+                  <div>
+                    <span class="category-name text-sm font-weight-medium d-block">
+                      {{ category.name }}
+                    </span>
+                    <span class="category-count text-xs opacity-75">
+                      {{ getProductCount(category.id) }} items
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="!isDesktop"
+            :style="overlayStyle"
+            @click="closeMobileSidebar"
+          />
+
+          <div
+            v-if="!isDesktop"
+            class="mobile-sidebar"
+            :style="mobileSidebarStyle"
+          >
+            <div class="d-flex justify-end pa-2 border-bottom">
+              <VBtn
+                icon="tabler-x"
+                variant="text"
+                size="small"
+                @click="closeMobileSidebar"
+              />
+            </div>
+
+            <div class="pa-4">
+              <div class="mb-4">
+                <h3 class="text-h6 font-weight-bold text-grey-darken-3">Categories</h3>
+                <p class="text-body-2 text-grey-darken-1">Choose your favorite items</p>
+              </div>
+
+              <div
+                v-for="category in categories"
+                :key="category.id"
+                class="category-item pa-3 mb-2 rounded-lg cursor-pointer transition-all"
+                :class="getCategoryClass(category.id)"
+                @click="selectCategory(category.id)"
+              >
+                <div class="text-left d-flex align-center">
+                  <VIcon
+                    :icon="getCategoryIcon(category.id)"
+                    size="20"
+                    class="mr-3"
+                  />
+                  <div>
+                    <span class="category-name text-sm font-weight-medium d-block">
+                      {{ category.name }}
+                    </span>
+                    <span class="category-count text-xs opacity-75">
+                      {{ getProductCount(category.id) }} items
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div 
+            class="products-container"
+            :style="{
+              width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
+              padding: isMobile ? '12px' : '24px',
+              boxSizing: 'border-box',
+              marginLeft: '0px', 
+              transition: 'width 0.3s ease'
+            }"
+          >
+            <div class="products-header mb-4 d-flex align-center justify-space-between">
+              <div>
+                <h3 
+                  class="font-weight-bold"
+                  :class="isMobile ? 'text-h6' : 'text-h5'"
                 >
-                  <!-- Product Image -->
-                  <div class="product-image-container text-center pa-4 position-relative">
+                  {{ getCurrentCategoryName }}
+                </h3>
+                <p class="text-body-2 text-medium-emphasis mt-1">
+                  Showing {{ filteredProducts.length }} products
+                </p>
+              </div>
+              
+              <VTextField
+                v-if="isMobile && windowWidth <= 500"
+                v-model="searchQuery"
+                placeholder="Search..."
+                prepend-inner-icon="tabler-search"
+                variant="outlined"
+                density="compact"
+                style="max-width: 150px;"
+                hide-details
+              />
+            </div>
+
+            <div class="products-grid">
+              <div 
+                class="product-grid-container"
+                :style="{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+                  gap: isMobile ? '12px' : '16px'
+                }"
+              >
+                <div
+                  v-for="product in filteredProducts"
+                  :key="product.id"
+                  class="product-card-wrapper"
+                >
+                  <VCard
+                    class="product-card h-100 overflow-hidden"
+                    elevation="2"
+                    rounded="md"
+                    :style="{ 
+                      height: productCardHeight, 
+                      transition: 'transform 0.2s ease;'
+                    }"
+                    @mouseover="$event.currentTarget.style.transform = 'translateY(-2px)'"
+                    @mouseleave="$event.currentTarget.style.transform = 'translateY(0)'"
+                  >
+                    <!-- Gambar memenuhi bagian atas card -->
                     <div 
-                      class="product-image bg-grey-lighten-3 rounded-circle mx-auto d-flex align-center justify-center" 
+                      class="product-image-container position-relative"
                       :style="{ 
-                        width: isMobile ? '60px' : '80px', 
-                        height: isMobile ? '60px' : '80px' 
+                        height: isMobile ? '120px' : '150px',
+                        overflow: 'hidden'
                       }"
                     >
-                      <VIcon 
-                        :icon="getProductIcon(product.category)" 
-                        :size="isMobile ? '24' : '32'"
-                        color="grey-darken-1"
+                      <img 
+                        v-if="getProductImageUrl(product)"
+                        :src="getProductImageUrl(product)"
+                        :alt="product.name"
+                        class="product-image"
+                        :style="{ 
+                          width: '100%', 
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center'
+                        }"
+                        @error="handleImageError"
+                        @load="handleImageLoad"
                       />
-                    </div>
-                    
-                    <!-- Special badges -->
-                    <VChip
-                      v-if="product.isSpecial"
-                      color="warning"
-                      size="x-small"
-                      class="position-absolute badge-chip"
-                      style="top: 4px; right: 4px;"
-                    >
-                      <VIcon icon="tabler-star" size="10" start />
-                      <span v-if="!isMobile">Special</span>
-                    </VChip>
-                    <VChip
-                      v-if="product.isCombo"
-                      color="success"
-                      size="x-small"
-                      class="position-absolute badge-chip"
-                      style="top: 4px; right: 4px;"
-                    >
-                      <span v-if="!isMobile">Combo</span>
-                      <VIcon v-else icon="tabler-package" size="10" />
-                    </VChip>
-                    <VChip
-                      v-if="product.isPromo"
-                      color="primary"
-                      size="x-small"
-                      class="position-absolute badge-chip"
-                      style="top: 4px; right: 4px;"
-                    >
-                      <span v-if="!isMobile">Promo</span>
-                      <VIcon v-else icon="tabler-percentage" size="10" />
-                    </VChip>
-                  </div>
-
-                  <VCardText class="pa-3 d-flex flex-column justify-space-between">
-                    <div>
-                      <h4 
-                        class="font-weight-bold text-left"
-                        :class="isMobile ? 'text-body-2' : 'text-subtitle-1'"
-                        style="line-height: 1.2;"
-                      >
-                        {{ product.name }}
-                      </h4>
-                    </div>
-                    
-                    <div class="d-flex align-center justify-space-between">
-                      <span 
-                        class="text-primary font-weight-bold"
-                        :class="isMobile ? 'text-body-2' : 'text-h6'"
-                      >
-                        {{ isMobile ? formatPrice(product.price) : `Rp${formatPrice(product.price)}` }}
-                      </span>
-                      <VBtn
-                        icon="tabler-plus"
-                        color="primary"
-                        :size="isMobile ? 'x-small' : 'small'"
-                        rounded="circle"
-                        @click="addToCart(product)"
-                        elevation="2"
-                      />
-                    </div>
-                  </VCardText>
-                </VCard>
-              </div>
-            </div>
-          </div>
-
-          <!-- Empty State -->
-          <div v-if="filteredProducts.length === 0" class="text-center py-8">
-            <VIcon icon="tabler-search-off" size="48" color="grey-lighten-1" class="mb-4" />
-            <h4 class="text-h6 text-medium-emphasis mb-2">No products found</h4>
-            <p class="text-body-2 text-medium-emphasis">
-              Try adjusting your search or filter criteria
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- CART PAGE (placeholder) -->
-    <!-- CART & INVOICE PAGE -->
-    <div
-      v-if="currentPage === 'cart'"
-      class="products-container"
-      :style="{
-        width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
-        maxWidth: '100%',
-        padding: isMobile ? '12px' : '24px',
-        boxSizing: 'border-box',
-        margin: '0 auto', // Tengahkan secara horizontal
-        transition: 'width 0.3s ease'
-      }"
-    >
-      <!-- Header -->
-      <VAppBar
-        color="white"
-        elevation="1"
-        class="px-4"
-        style="z-index: 1002;"
-        fixed
-      >
-        <VBtn
-          icon="tabler-arrow-left"
-          variant="text"
-          @click="currentPage = 'catalog'"
-        />
-        
-        <VAppBarTitle class="font-weight-bold">
-          Detail Pesanan
-        </VAppBarTitle>
-        
-        <VSpacer />
-      </VAppBar>
-
-      <!-- Main Content -->
-      <div style="padding-top: 64px;">
-        <VContainer class="pa-4">
-          <!-- Cart Items Section -->
-          <VCard class="mb-4" elevation="2" rounded="md">
-            <VCardText class="pa-4">
-              <div class="d-flex justify-space-between align-center mb-4">
-                <h3 class="text-h6 font-weight-bold">Daftar Pesanan</h3>
-                <VBtn
-                  color="primary"
-                  variant="outlined"
-                  size="small"
-                  rounded="pill"
-                  @click="currentPage = 'catalog'"
-                  class="text-none"
-                >
-                  <VIcon 
-                    icon="tabler-plus" 
-                    start 
-                    size="16"
-                  />
-                  Tambah Menu
-                </VBtn>
-              </div>
-
-              <!-- Cart Items List -->
-              <div v-if="cartItems.length > 0">
-                <div
-                  v-for="(item, index) in cartItems"
-                  :key="item.id"
-                  class="cart-item mb-4"
-                >
-                  <VRow align="center">
-                    <VCol cols="3" class="pa-2">
+                      
                       <div 
-                        class="product-image bg-grey-lighten-3 rounded-lg d-flex align-center justify-center mx-auto"
-                        style="width: 60px; height: 60px;"
+                        class="image-placeholder bg-grey-lighten-3 d-flex align-center justify-center" 
+                        :style="{ 
+                          width: '100%', 
+                          height: '100%',
+                          position: getProductImageUrl(product) ? 'absolute' : 'static',
+                          top: getProductImageUrl(product) ? '0' : 'auto',
+                          left: getProductImageUrl(product) ? '0' : 'auto',
+                          display: getProductImageUrl(product) ? 'none' : 'flex'
+                        }"
+                        v-else
                       >
                         <VIcon 
-                          :icon="getProductIcon(item.category)" 
-                          size="24"
+                          :icon="getProductIcon(product.category)" 
+                          :size="isMobile ? '40' : '50'"
                           color="grey-darken-1"
                         />
                       </div>
-                    </VCol>
-                    
-                    <VCol cols="5" class="pa-2">
+
+                      <!-- Badges overlay pada gambar -->
+                      <VChip
+                        v-if="product.isSpecial"
+                        color="warning"
+                        size="x-small"
+                        class="position-absolute badge-chip"
+                        style="top: 8px; right: 8px;"
+                      >
+                        <VIcon icon="tabler-star" size="10" start />
+                        <span v-if="!isMobile">Special</span>
+                      </VChip>
+                      <VChip
+                        v-if="product.isCombo"
+                        color="success"
+                        size="x-small"
+                        class="position-absolute badge-chip"
+                        style="top: 8px; right: 8px;"
+                      >
+                        <span v-if="!isMobile">Combo</span>
+                        <VIcon v-else icon="tabler-package" size="10" />
+                      </VChip>
+                      <VChip
+                        v-if="product.isPromo"
+                        color="primary"
+                        size="x-small"
+                        class="position-absolute badge-chip"
+                        style="top: 8px; right: 8px;"
+                      >
+                        <span v-if="!isMobile">Promo</span>
+                        <VIcon v-else icon="tabler-percentage" size="10" />
+                      </VChip>
+                    </div>
+
+                    <!-- Konten card di bagian bawah -->
+                    <VCardText class="pa-3 d-flex flex-column justify-space-between flex-grow-1">
                       <div>
-                        <h4 class="text-body-1 font-weight-bold mb-1">
-                          {{ item.name }}
+                        <h4 
+                          class="font-weight-bold text-left mb-2"
+                          :class="isMobile ? 'text-body-2' : 'text-subtitle-1'"
+                          style="line-height: 1.2;"
+                        >
+                          {{ product.name }}
                         </h4>
-                        <p class="text-body-2 text-grey-darken-1 mb-0">
-                          {{ item.size || 'Regular' }} Size, {{ item.sugarLevel || 'Normal' }} Sugar
-                        </p>
                       </div>
-                    </VCol>
-                    
-                    <VCol cols="4" class="pa-2">
-                      <div class="text-right">
-                        <p class="text-body-1 font-weight-bold mb-2">
-                          Rp{{ formatPrice(item.price) }}
-                        </p>
-                        
-                        <!-- Quantity Controls -->
-                        <div class="d-flex align-center justify-end">
-                          <VBtn
-                            icon="tabler-trash"
-                            variant="text"
-                            size="x-small"
-                            color="primary"
-                            class="mr-2"
-                            @click="removeFromCart(item.id)"
-                          />
-                          
-                          <VBtn
-                            icon="tabler-minus"
-                            variant="outlined"
-                            size="x-small"
-                            color="grey-darken-2"
-                            @click="decreaseQuantity(item.id)"
-                            :disabled="item.quantity <= 1"
-                            style="min-width: 24px; width: 24px; height: 24px;"
-                          />
-                          
-                          <span class="mx-2 text-body-1 font-weight-bold" style="min-width: 20px; text-align: center;">
-                            {{ item.quantity }}
-                          </span>
-                          
-                          <VBtn
-                            icon="tabler-plus"
-                            variant="flat"
-                            size="x-small"
-                            color="primary"
-                            @click="increaseQuantity(item.id)"
-                            style="min-width: 24px; width: 24px; height: 24px;"
-                          />
-                        </div>
+                      
+                      <div class="d-flex align-center justify-space-between mt-auto">
+                        <span 
+                          class="text-primary font-weight-bold"
+                          :class="isMobile ? 'text-body-2' : 'text-h6'"
+                        >
+                          {{ isMobile ? formatPrice(product.price) : `Rp${formatPrice(product.price)}` }}
+                        </span>
+                        <VBtn
+                          icon="tabler-plus"
+                          color="primary"
+                          :size="isMobile ? 'x-small' : 'small'"
+                          rounded="circle"
+                          @click="addToCart(product)"
+                          elevation="2"
+                        />
                       </div>
-                    </VCol>
-                  </VRow>
-                  
-                  <!-- Divider -->
-                  <VDivider v-if="index < cartItems.length - 1" class="mt-3" />
+                    </VCardText>
+                  </VCard>
                 </div>
               </div>
+            </div>
 
-              <!-- Empty Cart State -->
-              <div v-else class="text-center py-8">
-                <VIcon 
-                  icon="tabler-shopping-cart-off" 
-                  size="48" 
-                  color="grey-lighten-1" 
-                  class="mb-4" 
-                />
-                <h4 class="text-h6 text-medium-emphasis mb-2">Keranjang Kosong</h4>
-                <p class="text-body-2 text-medium-emphasis mb-4">
-                  Tambahkan item ke keranjang untuk melanjutkan
-                </p>
-                <VBtn
-                  color="primary"
-                  variant="flat"
-                  rounded="pill"
-                  @click="currentPage = 'catalog'"
-                >
-                  <VIcon icon="tabler-plus" start />
-                  Tambah Item
-                </VBtn>
-              </div>
-            </VCardText>
-          </VCard>
-
-          <!-- Payment Summary -->
-          <VCard 
-            v-if="cartItems.length > 0"
-            class="mb-4" 
-            elevation="2" 
-            rounded="md"
-          >
-            <VCardText class="pa-4">
-              <div class="d-flex align-center mb-3">
-                <h3 class="text-h6 font-weight-bold">Ringkasan Pembayaran</h3>
-                <VIcon 
-                  icon="tabler-info-circle" 
-                  size="16" 
-                  color="grey-darken-2"
-                  class="ml-2"
-                />
-              </div>
-
-              <!-- Subtotal -->
-              <div class="d-flex justify-space-between align-center mb-2">
-                <span class="text-body-1">Subtotal</span>
-                <span class="text-body-1 font-weight-medium">
-                  Rp{{ formatPrice(subtotal) }}
-                </span>
-              </div>
-
-              <VDivider class="my-3" />
-
-              <!-- Total -->
-              <div class="d-flex justify-space-between align-center mb-4">
-                <span class="text-h6 font-weight-bold">Total Pembayaran</span>
-                <span class="text-h6 font-weight-bold">
-                  Rp{{ formatPrice(totalPayment) }}
-                </span>
-              </div>
-
-              <!-- Rewards Info -->
-              <!-- <VRow>
-                <VCol cols="6">
-                  <div class="d-flex align-center">
-                    <VIcon 
-                      icon="tabler-info-circle" 
-                      size="16" 
-                      color="grey-darken-2"
-                      class="mr-1"
-                    />
-                    <span class="text-body-2 text-grey-darken-2">Jiwa Point</span>
-                  </div>
-                  <div class="d-flex align-center mt-1">
-                    <VIcon 
-                      icon="tabler-coin" 
-                      size="16" 
-                      color="warning"
-                      class="mr-1"
-                    />
-                    <span class="text-body-2 font-weight-bold text-warning">
-                      Rp{{ jiwaPoints }}
-                    </span>
-                  </div>
-                </VCol>
-                
-                <VCol cols="6" class="text-right">
-                  <div>
-                    <span class="text-body-2 text-grey-darken-2">Total XP</span>
-                  </div>
-                  <div class="mt-1">
-                    <span class="text-body-2 font-weight-bold">
-                      {{ totalXP }}
-                    </span>
-                  </div>
-                </VCol>
-              </VRow> -->
-            </VCardText>
-          </VCard>
-        </VContainer>
-
-        <!-- Fixed Bottom Payment Button -->
-        <div 
-          v-if="cartItems.length > 0"
-          class="payment-button-container position-fixed w-100"
-          style="bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1001;"
-        >
-          <VContainer class="pa-4">
-            <VBtn
-              color="primary"
-              block
-              size="large"
-              rounded="md"
-              elevation="0"
-              class="text-none font-weight-bold"
-              @click="currentPage = 'payment'"
-            >
-              Pilih Pembayaran
-            </VBtn>
-          </VContainer>
+            <div v-if="filteredProducts.length === 0" class="text-center py-8">
+              <VIcon icon="tabler-search-off" size="48" color="grey-lighten-1" class="mb-4" />
+              <h4 class="text-h6 text-medium-emphasis mb-2">No products found</h4>
+              <p class="text-body-2 text-medium-emphasis">
+                Try adjusting your search or filter criteria
+              </p>
+            </div>
+          </div>
         </div>
-
-        <!-- Add bottom padding when cart has items to prevent content hiding behind fixed button -->
-        <div v-if="cartItems.length > 0" style="height: 100px;"></div>
       </div>
-    </div>
-
-    <div
-      v-if="currentPage === 'payment'"
-      class="products-container"
-      :style="{
-        width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
-        maxWidth: '100%',
-        padding: isMobile ? '12px' : '24px',
-        boxSizing: 'border-box',
-        margin: '0 auto', // Tengahkan secara horizontal
-        transition: 'width 0.3s ease'
-      }"
-    >
-      <!-- Header -->
-      <VAppBar
-        color="white"
-        elevation="1"
-        class="px-4"
-        style="z-index: 1002;"
-        fixed
-      >
-        <VBtn
-          icon="tabler-arrow-left"
-          variant="text"
-          @click="currentPage = 'cart'"
-        />
-        
-        <VAppBarTitle class="font-weight-bold">
-          Pilih Pembayaran
-        </VAppBarTitle>
-        
-        <VSpacer />
-      </VAppBar>
-
-      <!-- Main Content -->
-      <div style="padding-top: 64px;">
-        <VContainer class="pa-4">
-          <!-- Order Summary -->
-          <VCard class="mb-4" elevation="2" rounded="md">
-            <VCardText class="pa-4">
-              <h3 class="text-h6 font-weight-bold mb-3">Ringkasan Pesanan</h3>
-              
-              <div class="d-flex justify-space-between align-center mb-2">
-                <span class="text-body-2">{{ cartItemsCount }} Item</span>
-                <span class="text-body-2">Rp{{ formatPrice(subtotal) }}</span>
-              </div>
-              
-              <div class="d-flex justify-space-between align-center mb-2">
-                <span class="text-body-2">Pajak (10%)</span>
-                <span class="text-body-2">Rp{{ formatPrice(tax) }}</span>
-              </div>
-              
-              <VDivider class="my-2" />
-              
-              <div class="d-flex justify-space-between align-center">
-                <span class="text-h6 font-weight-bold">Total</span>
-                <span class="text-h6 font-weight-bold text-primary">
-                  Rp{{ formatPrice(totalPayment) }}
-                </span>
-              </div>
-            </VCardText>
-          </VCard>
 
   <VCard class="mb-4" elevation="2" rounded="md">
     <VCardText class="pa-4">
@@ -1537,167 +1333,387 @@ onMounted(() => {
   </VCard>
 
 
-          <!-- Customer Info Summary -->
-          <VCard class="mb-4" elevation="2" rounded="md">
-            <VCardText class="pa-4">
-              <h3 class="text-h6 font-weight-bold mb-3">Informasi Pembeli</h3>
-              
-              <div class="mb-2">
-                <VIcon icon="tabler-user" size="16" class="mr-2" color="grey-darken-2" />
-                <span class="text-body-2">{{ customerData.name }}</span>
-              </div>
-              
-              <div class="mb-2">
-                <VIcon icon="tabler-phone" size="16" class="mr-2" color="grey-darken-2" />
-                <span class="text-body-2">{{ customerData.phone }}</span>
-              </div>
-              
-              <div v-if="customerData.email" class="mb-2">
-                <VIcon icon="tabler-mail" size="16" class="mr-2" color="grey-darken-2" />
-                <span class="text-body-2">{{ customerData.email }}</span>
-              </div>
-              
-              <div>
-                <VIcon 
-                  :icon="orderType === 'takeaway' ? 'tabler-walk' : 'tabler-truck-delivery'" 
-                  size="16" 
-                  class="mr-2" 
-                  color="grey-darken-2" 
-                />
-                <span class="text-body-2 text-capitalize">{{ orderType }}</span>
-              </div>
-            </VCardText>
-          </VCard>
-        </VContainer>
+                <div v-else class="text-center py-8">
+                  <VIcon 
+                    icon="tabler-shopping-cart-off" 
+                    size="48" 
+                    color="grey-lighten-1" 
+                    class="mb-4" 
+                  />
+                  <h4 class="text-h6 text-medium-emphasis mb-2">Keranjang Kosong</h4>
+                  <p class="text-body-2 text-medium-emphasis mb-4">
+                    Tambahkan item ke keranjang untuk melanjutkan
+                  </p>
+                  <VBtn
+                    color="primary"
+                    variant="flat"
+                    rounded="pill"
+                    @click="currentPage = 'catalog'"
+                  >
+                    <VIcon icon="tabler-plus" start />
+                    Tambah Item
+                  </VBtn>
+                </div>
+              </VCardText>
+            </VCard>
 
-        <!-- Fixed Bottom Process Button -->
-        <div 
-          class="payment-button-container position-fixed w-100"
-          style="bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1001;"
-        >
-          <VContainer class="pa-4">
-            <VBtn
-              color="primary"
-              block
-              size="large"
+            <VCard 
+              v-if="localData.cartItems.length > 0"
+              class="mb-4" 
+              elevation="2" 
               rounded="md"
-              elevation="0"
-              class="text-none font-weight-bold"
-              :disabled="!selectedPayment"
-              @click="processPayment"
             >
-              <span v-if="!selectedPayment">Pilih Metode Pembayaran</span>
-              <span v-else>Bayar dengan {{ getPaymentMethodName(selectedPayment) }}</span>
-            </VBtn>
-          </VContainer>
-        </div>
+              <VCardText class="pa-4">
+                <div class="d-flex align-center mb-3">
+                  <h3 class="text-h6 font-weight-bold">Ringkasan Pembayaran</h3>
+                  <VIcon 
+                    icon="tabler-info-circle" 
+                    size="16" 
+                    color="grey-darken-2"
+                    class="ml-2"
+                  />
+                </div>
 
-        <!-- Bottom padding -->
-        <div style="height: 100px;"></div>
-      </div>
-    </div>
-
-    <!-- SUCCESS PAGE -->
-    <div
-      v-if="currentPage === 'success'"
-      class="products-container"
-      :style="{
-        width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
-        maxWidth: '100%',
-        padding: isMobile ? '12px' : '24px',
-        boxSizing: 'border-box',
-        margin: '0 auto', // Tengahkan secara horizontal
-        transition: 'width 0.3s ease'
-      }"
-    >
-      <VRow class="ma-0 fill-height">
-        <VCol cols="12" class="d-flex align-center justify-center pa-4">
-          <VCard
-            class="pa-8 text-center"
-            max-width="400"
-            width="100%"
-            elevation="12"
-            rounded="md"
-          >
-            <VCardText>
-              <div class="success-icon mb-4">
-                <img
-                  src="/storage/logo/papasans-logo.png"
-                  alt="Logo SSB"
-                  class="logo"
-                />
-              </div>
-              
-              <h1 class="text-h4 font-weight-bold mb-3">Pembayaran Berhasil!</h1>
-              
-              <p class="text-body-1 text-medium-emphasis mb-4">
-                Terima kasih telah berbelanja. Pesanan Anda sedang diproses.
-              </p>
-              
-              <VCard variant="outlined" class="pa-4 mb-4" rounded="lg">
                 <div class="d-flex justify-space-between align-center mb-2">
-                  <span class="text-body-2 text-start">Total Pembayaran:</span>
-                  <span class="text-h6 font-weight-bold text-success text-end">
+                  <span class="text-body-1">Subtotal</span>
+                  <span class="text-body-1 font-weight-medium">
+                    Rp{{ formatPrice(subtotal) }}
+                  </span>
+                </div>
+
+                <VDivider class="my-3" />
+
+                <div class="d-flex justify-space-between align-center mb-4">
+                  <span class="text-h6 font-weight-bold">Total Pembayaran</span>
+                  <span class="text-h6 font-weight-bold">
                     Rp{{ formatPrice(totalPayment) }}
                   </span>
                 </div>
+              </VCardText>
+            </VCard>
+          </VContainer>
 
-                <div class="d-flex justify-space-between align-center mb-2">
-                  <span class="text-body-2 text-start">Metode Pembayaran:</span>
-                  <span class="text-body-2 font-weight-medium text-end">
-                    {{ getPaymentMethodName(selectedPayment) }}
-                    <template v-if="selectedPaymentOption"> - {{ selectedPaymentOption }}</template>
-                  </span>
-                </div>
-
-                <!-- <div class="d-flex justify-space-between align-center">
-                  <span class="text-body-2 text-start">Jiwa Points Earned:</span>
-                  <span class="text-body-2 font-weight-bold text-warning text-end">
-                    +{{ jiwaPoints }}
-                  </span>
-                </div> -->
-              </VCard>
-
+          <div 
+            v-if="localData.cartItems.length > 0"
+            class="payment-button-container position-fixed w-100"
+            style="bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1001;"
+          >
+            <VContainer class="pa-4">
               <VBtn
                 color="primary"
-                size="large"
-                rounded="pill"
-                class="text-none font-weight-bold mb-3"
                 block
-                @click="startNewOrder"
+                size="large"
+                rounded="md"
+                elevation="0"
+                class="text-none font-weight-bold"
+                @click="currentPage = 'payment'"
               >
-                <VIcon icon="tabler-printer" start />
-                Cetak Struk
+                Pilih Pembayaran
               </VBtn>
-              
+            </VContainer>
+          </div>
+
+          <div v-if="localData.cartItems.length > 0" style="height: 100px;"></div>
+        </div>
+      </div>
+
+      <div
+        v-if="currentPage === 'payment'"
+        class="products-container"
+        :style="{
+          width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
+          maxWidth: '100%',
+          padding: isMobile ? '12px' : '24px',
+          boxSizing: 'border-box',
+          margin: '0 auto',
+          transition: 'width 0.3s ease'
+        }"
+      >
+        <VAppBar
+          color="white"
+          elevation="1"
+          class="px-4"
+          style="z-index: 1002;"
+          fixed
+        >
+          <VBtn
+            icon="tabler-arrow-left"
+            variant="text"
+            @click="currentPage = 'cart'"
+          />
+          
+          <VAppBarTitle class="font-weight-bold">
+            Pilih Pembayaran
+          </VAppBarTitle>
+          
+          <VSpacer />
+        </VAppBar>
+
+        <div style="padding-top: 64px;">
+          <VContainer class="pa-4">
+            <VCard class="mb-4" elevation="2" rounded="md">
+              <VCardText class="pa-4">
+                <h3 class="text-h6 font-weight-bold mb-3">Ringkasan Pesanan</h3>
+                
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <span class="text-body-2">{{ cartItemsCount }} Item</span>
+                  <span class="text-body-2">Rp{{ formatPrice(subtotal) }}</span>
+                </div>
+                
+                <div class="d-flex justify-space-between align-center mb-2">
+                  <span class="text-body-2">Pajak (10%)</span>
+                  <span class="text-body-2">Rp{{ formatPrice(tax) }}</span>
+                </div>
+                
+                <VDivider class="my-2" />
+                
+                <div class="d-flex justify-space-between align-center">
+                  <span class="text-h6 font-weight-bold">Total</span>
+                  <span class="text-h6 font-weight-bold text-primary">
+                    Rp{{ formatPrice(totalPayment) }}
+                  </span>
+                </div>
+              </VCardText>
+            </VCard>
+
+            <VCard class="mb-4" elevation="2" rounded="md">
+              <VCardText class="pa-4">
+                <h3 class="text-h6 font-weight-bold mb-4">Metode Pembayaran</h3>
+                
+                <VRow>
+                  <VCol 
+                    v-for="method in paymentMethods" 
+                    :key="method.id"
+                    cols="6"
+                    class="mb-3"
+                  >
+                    <VCard
+                      :color="selectedPayment === method.id ? 'primary' : 'default'"
+                      :variant="selectedPayment === method.id ? 'flat' : 'outlined'"
+                      rounded="lg"
+                      class="payment-method-card text-center pa-4 cursor-pointer"
+                      elevation="0"
+                      @click="selectedPayment = method.id"
+                    >
+                      <VIcon 
+                        :icon="method.icon" 
+                        size="32"
+                        :color="selectedPayment === method.id ? 'white' : 'grey-darken-2'"
+                        class="mb-2"
+                      />
+                      <p 
+                        class="text-body-2 font-weight-medium mb-0"
+                        :class="selectedPayment === method.id ? 'text-white' : 'text-grey-darken-2'"
+                      >
+                        {{ method.name }}
+                      </p>
+                    </VCard>
+                  </VCol>
+                </VRow>
+
+                <VRow v-if="selectedPayment === 'qris'">
+                  <VCol cols="12">
+                    <VAlert type="info" border="start" color="primary" elevation="1">
+                      {{ paymentMethods.find(m => m.id === 'qris')?.info }}
+                    </VAlert>
+                  </VCol>
+                </VRow>
+
+                <VRow v-if="selectedPayment === 'card'">
+                  <VCol cols="12">
+                    <VSelect
+                      v-model="selectedPaymentOption"
+                      :items="paymentMethods.find(m => m.id === 'card')?.options"
+                      label="Pilih Virtual Account"
+                      variant="outlined"
+                    />
+                  </VCol>
+                </VRow>
+
+                <VRow v-if="selectedPayment === 'ewallet'">
+                  <VCol cols="12">
+                    <VSelect
+                      v-model="selectedPaymentOption"
+                      :items="paymentMethods.find(m => m.id === 'ewallet')?.options"
+                      label="Pilih E-Wallet"
+                      variant="outlined"
+                    />
+                  </VCol>
+                </VRow>
+
+                <VAlert
+                  v-if="selectedPaymentOption"
+                  type="success"
+                  border="start"
+                  color="green"
+                  elevation="1"
+                  class="mt-4"
+                >
+                  Pembayaran melalui: <strong>{{ selectedPaymentOption }}</strong>
+                </VAlert>
+
+              </VCardText>
+            </VCard>
+
+            <VCard class="mb-4" elevation="2" rounded="md">
+              <VCardText class="pa-4">
+                <h3 class="text-h6 font-weight-bold mb-3">Informasi Pembeli</h3>
+                
+                <div class="mb-2">
+                  <VIcon icon="tabler-user" size="16" class="mr-2" color="grey-darken-2" />
+                  <span class="text-body-2">{{ localData.name }}</span>
+                </div>
+                
+                <div class="mb-2">
+                  <VIcon icon="tabler-phone" size="16" class="mr-2" color="grey-darken-2" />
+                  <span class="text-body-2">{{ localData.phone }}</span>
+                </div>
+                
+                <div v-if="localData.email" class="mb-2">
+                  <VIcon icon="tabler-mail" size="16" class="mr-2" color="grey-darken-2" />
+                  <span class="text-body-2">{{ localData.email }}</span>
+                </div>
+              </VCardText>
+            </VCard>
+          </VContainer>
+
+          <div 
+            class="payment-button-container position-fixed w-100"
+            style="bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1001;"
+          >
+            <VContainer class="pa-4">
               <VBtn
-                color="success"
-                size="large"
-                rounded="pill"
-                class="text-none font-weight-bold mb-3"
+                color="primary"
                 block
-                @click="startNewOrder"
-              >
-                <VIcon icon="tabler-plus" start />
-                Pesan Lagi
-              </VBtn>
-              
-              <VBtn
-                variant="outlined"
                 size="large"
-                rounded="pill"
-                class="text-none"
-                block
-                @click="goBackToBarcode()"
+                rounded="md"
+                elevation="0"
+                class="text-none font-weight-bold"
+                :disabled="!selectedPayment"
+                :loading="loading"
+                @click="processPayment"
               >
-                <VIcon icon="tabler-home" start />
-                Kembali ke Beranda
+                <span v-if="!selectedPayment">Pilih Metode Pembayaran</span>
+                <span v-else>Bayar dengan {{ getPaymentMethodName(selectedPayment) }}</span>
               </VBtn>
-            </VCardText>
-          </VCard>
-        </VCol>
-      </VRow>
-    </div>
+            </VContainer>
+          </div>
+
+          <div style="height: 100px;"></div>
+        </div>
+      </div>
+
+      <div
+        v-if="currentPage === 'success'"
+        class="products-container"
+        :style="{
+          width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
+          maxWidth: '100%',
+          padding: isMobile ? '12px' : '24px',
+          boxSizing: 'border-box',
+          margin: '0 auto',
+          transition: 'width 0.3s ease'
+        }"
+      >
+        <VRow class="ma-0 fill-height">
+          <VCol cols="12" class="d-flex align-center justify-center pa-4">
+            <VCard
+              class="pa-8 text-center"
+              max-width="400"
+              width="100%"
+              elevation="12"
+              rounded="md"
+            >
+              <VCardText>
+                <div class="success-icon mb-4">
+                  <img
+                    src="/images/logo/papasans.png"
+                    alt="logo papasans"
+                    class="logo"
+                  />
+                </div>
+                
+                <h1 class="text-h4 font-weight-bold mb-3">Pembayaran Berhasil!</h1>
+                
+                <p class="text-body-1 text-medium-emphasis mb-4">
+                  Terima kasih telah berbelanja. Pesanan Anda sedang diproses.
+                </p>
+                
+                <VCard variant="outlined" class="pa-4 mb-4" rounded="lg">
+                  <div class="d-flex justify-space-between align-center mb-2">
+                    <span class="text-body-2 text-start">Total Pembayaran:</span>
+                    <span class="text-h6 font-weight-bold text-success text-end">
+                      Rp{{ formatPrice(totalPayment) }}
+                    </span>
+                  </div>
+
+                  <div class="d-flex justify-space-between align-center mb-2">
+                    <span class="text-body-2 text-start">Metode Pembayaran:</span>
+                    <span class="text-body-2 font-weight-medium text-end">
+                      {{ getPaymentMethodName(selectedPayment) }}
+                      <template v-if="selectedPaymentOption"> - {{ selectedPaymentOption }}</template>
+                    </span>
+                  </div>
+                </VCard>
+
+                <VBtn
+                  color="primary"
+                  size="large"
+                  rounded="pill"
+                  class="text-none font-weight-bold mb-3"
+                  block
+                  @click="startNewOrder"
+                >
+                  <VIcon icon="tabler-printer" start />
+                  Cetak Struk
+                </VBtn>
+                
+                <VBtn
+                  color="success"
+                  size="large"
+                  rounded="pill"
+                  class="text-none font-weight-bold mb-3"
+                  block
+                  @click="startNewOrder"
+                >
+                  <VIcon icon="tabler-plus" start />
+                  Pesan Lagi
+                </VBtn>
+                
+                <VBtn
+                  variant="outlined"
+                  size="large"
+                  rounded="pill"
+                  class="text-none"
+                  block
+                  @click="goBackToBarcode()"
+                >
+                  <VIcon icon="tabler-home" start />
+                  Kembali ke Beranda
+                </VBtn>
+              </VCardText>
+            </VCard>
+          </VCol>
+        </VRow>
+      </div>
+
+      <VSnackbar
+        v-model="isFlatSnackbarVisible"
+        :color="snackbarColor"
+        variant="flat"
+        location="top"
+      >
+        {{ snackbarMessage }}
+        <template #actions>
+          <VBtn
+            color="white"
+            variant="text"
+            @click="isFlatSnackbarVisible = false"
+          >
+            Close
+          </VBtn>
+        </template>
+      </VSnackbar>
   </VContainer>
 </template>
 
@@ -1721,7 +1737,7 @@ onMounted(() => {
 }
 
 .logo {
-  max-width: 150px; /* atau sesuaikan nilainya */
+  max-width: 150px;
   height: auto;
 }
 
@@ -1771,7 +1787,6 @@ onMounted(() => {
   min-width: 20px !important;
 }
 
-/* Smooth scrollbar */
 .sidebar::-webkit-scrollbar,
 .mobile-sidebar::-webkit-scrollbar {
   width: 4px;
@@ -1793,7 +1808,6 @@ onMounted(() => {
   background: #a8a8a8;
 }
 
-/* Responsive adjustments */
 @media (max-width: 767px) {
   .products-grid {
     padding: 0 8px;

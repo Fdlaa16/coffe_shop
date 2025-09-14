@@ -4,11 +4,22 @@ namespace Modules\Order\Http\Controllers;
 
 use App\Helpers\Helper;
 use App\Http\Resources\OrderResource;
+use App\Mail\OrderMail;
+use App\Models\Customer;
+use App\Models\Invoice;
+use App\Models\InvoiceItem;
+use App\Models\Menu;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Table;
+use App\Models\User;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Validator;
 
 class OrderController extends Controller
 {
@@ -18,81 +29,7 @@ class OrderController extends Controller
      */
     public function index(Request $request)
     {
-        $orderByColumn = 'created_at';
-        $orderByDirection = 'desc';
-
-        if ($request->has('sort')) {
-            $orderByDirection = $request->input('sort') === 'asc' ? 'asc' : 'desc';
-        }
-
-        $ordersQuery = Order::query()
-            ->with([
-                'customer.user',
-                'table'
-            ])
-            ->withTrashed();
-
-        $ordersQuery->when(!empty($request->search), function ($q) use ($request) {
-            $q->where(function ($q) use ($request) {
-                $q->where('created_at', 'like', '%' . $request->search . '%')
-                    ->orWhere('name', 'like', '%' . $request->search . '%')
-                    ->orWhere('title', 'like', '%' . $request->search . '%')
-                    ->orWhere('hashtag', 'like', '%' . $request->search . '%')
-                    ->orWhere('description', 'like', '%' . $request->search . '%')
-                    ->orWhere('link', 'like', '%' . $request->search . '%');
-            });
-        });
-
-        $ordersQuery->when($request->status, function ($query, $status) {
-            switch ($status) {
-                case 'in_active':
-                    $query->onlyTrashed();
-                    break;
-                case 'active':
-                    $query->whereNull('deleted_at');
-                    break;
-                case 'all':
-                default:
-                    break;
-            }
-        });
-
-        if ($request->filled('from_date')) {
-            $ordersQuery->where('created_at', '>=', Helper::formatDate($request->from_date, 'Y-m-d') . ' 00:00:00');
-        }
-
-        if ($request->filled('to_date')) {
-            $ordersQuery->where('created_at', '<=', Helper::formatDate($request->to_date, 'Y-m-d') . ' 23:59:59');
-        }
-
-        $ordersQuery->orderBy($orderByColumn, $orderByDirection);
-
-        $orders = $ordersQuery->get();
-
-        $statusCounts = DB::table('orders')
-            ->selectRaw('
-                COUNT(*) as total,
-                SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) as active,
-                SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) as in_active
-            ')
-            ->when($request->filled('from_date'), function ($q) use ($request) {
-                $q->where('created_at', '>=', Helper::formatDate($request->from_date, 'Y-m-d') . ' 00:00:00');
-            })
-            ->when($request->filled('to_date'), function ($q) use ($request) {
-                $q->where('created_at', '<=', Helper::formatDate($request->to_date, 'Y-m-d') . ' 23:59:59');
-            })
-            ->first();
-
-        $responseTotals = [
-            'all' => (int) $statusCounts->total,
-            'active' => (int) $statusCounts->active,
-            'in_active' => (int) $statusCounts->in_active,
-        ];
-
-        return response()->json([
-            'data' => $orders,
-            'totals' => $responseTotals,
-        ]);
+        //
     }
 
     /**
@@ -111,49 +48,175 @@ class OrderController extends Controller
      */
     public function store(Request $request)
     {
-        // DB::beginTransaction();
-        // try {
-        //     $postData = $request->all();
-        //     $rules = [
-        //         'name'      => 'required',
-        //         'email'     => 'required|email|unique:users,email',
-        //         'phone'     => 'required',
-        //     ];
+        DB::beginTransaction();
 
-        //     $messages = [
-        //         'name.required'      => 'Nama harus diisi',
-        //         'email.required'     => 'Email harus diisi',
-        //         'email.email'        => 'Format email tidak valid',
-        //         'email.unique'       => 'Email sudah digunakan',
-        //         'phone.required'     => 'Nomor Telepon harus diisi',
-        //     ];
+        try {
+            $postData = $request->all();
 
-        //     $validator = Validator::make($postData, $rules, $messages);
+            $rules = [
+                'name' => 'required|string',
+                'phone' => 'required|string',
+                'email' => 'required|email',
+                'cartItems' => 'required|array|min:1',
+                'cartItems.*.menu_id' => 'required',
+                'cartItems.*.menu_name' => 'required|string',
+                'cartItems.*.qty' => 'required|numeric|min:1',
+                'cartItems.*.price' => 'required|numeric|min:0',
+                'cartItems.*.subtotal' => 'required|numeric|min:0',
+                'cartItems.*.size' => 'nullable|string',
+                'cartItems.*.sugar_level' => 'nullable|string',
+                'cartItems.*.notes' => 'nullable|string',
+                'cartItems.*.category' => 'required|string',
+                'method' => 'required|string',
+                'method_name' => 'required|string',
+                'option' => 'nullable|string',
+                'total_items' => 'required|numeric|min:1',
+                'subtotal' => 'required|numeric|min:0',
+                'tax' => 'required|numeric|min:0',
+                'total_payment' => 'required|numeric|min:0',
+                'table_id' => 'nullable|exists:tables,id'
+            ];
 
-        //     if ($validator->fails()) {
-        //         return response()->json(['errors' => $validator->messages()->toArray()], 422);
-        //     } else {
-        //         $user = User::create(['email' => $request->email]);
+            $messages = [
+                'name.required' => 'Nama harus diisi',
+                'phone.required' => 'Nomor telepon harus diisi',
+                'email.required' => 'Email harus diisi',
+                'email.email' => 'Format email tidak valid',
+                'cartItems.required' => 'Harus ada menu yang dipilih',
+                'cartItems.array' => 'Format cart items tidak valid',
+                'cartItems.min' => 'Minimal harus ada 1 item',
+                'cartItems.*.menu_id.required' => 'ID menu harus diisi',
+                'cartItems.*.qty.required' => 'Jumlah menu harus diisi',
+                'cartItems.*.qty.numeric' => 'Jumlah menu harus angka',
+                'cartItems.*.qty.min' => 'Jumlah menu minimal 1',
+                'cartItems.*.price.required' => 'Harga harus diisi',
+                'cartItems.*.price.numeric' => 'Harga harus angka',
+                'cartItems.*.price.min' => 'Harga minimal 0',
+                'cartItems.*.subtotal.required' => 'Subtotal harus diisi',
+                'cartItems.*.subtotal.numeric' => 'Subtotal harus angka',
+                'cartItems.*.category.required' => 'Kategori menu harus diisi',
+                'method.required' => 'Metode pembayaran harus diisi',
+                'method_name.required' => 'Nama metode pembayaran harus diisi',
+                'total_items.required' => 'Total items harus diisi',
+                'subtotal.required' => 'Subtotal harus diisi',
+                'tax.required' => 'Pajak harus diisi',
+                'total_payment.required' => 'Total pembayaran harus diisi',
+                'table_id.exists' => 'Meja tidak ditemukan'
+            ];
 
-        //         $customer = Customer::create([
-        //             'user_id' => $user->id,
-        //             'name' => $request->name,
-        //             'phone' => $request->phone,
-        //         ]);
+            $validator = Validator::make($postData, $rules, $messages);
 
-        //         DB::commit();
-        //         return response()->json([
-        //             'message' => 'Customer created successfully.',
-        //             'data' => $customer
-        //         ], 201);
-        //     }
-        // } catch (\Exception $e) {
-        //     DB::rollBack();
-        //     return response()->json([
-        //         'message' => 'Something went wrong',
-        //         'error' => $e->getMessage()
-        //     ], 500);
-        // }
+            if ($validator->fails()) {
+                return response()->json(array('errors' => $validator->messages()->toArray()), 422);
+            } else {
+
+                $customer = Customer::updateOrCreate(
+                    ['phone' => $request->phone],
+                    ['name' => $request->name, 'phone' => $request->phone]
+                );
+
+                $user = User::updateOrCreate(
+                    ['email' => $request->email],
+                    [
+                        'name'              => $request->name,
+                        'email'             => $request->email,
+                        'password'          => Hash::make('default123'),
+                        'email_verified_at' => now()
+                    ]
+                );
+
+                $customer->update(['user_id' => $user->id]);
+
+                $order = Order::create([
+                    'customer_id'   => $customer->id,
+                    'table_id'      => $request->table_id,
+                    'order_date'    => now(),
+                    'subtotal'      => $request->subtotal,
+                    'tax'           => $request->tax,
+                    'total_net'     => $request->total_payment,
+                    'status'        => 'pending',
+                ]);
+
+                foreach ($request->cartItems as $item) {
+                    $menu = Menu::find($item['menu_id']);
+                    if (!$menu) {
+                        throw new \Exception("Menu dengan ID {$item['menu_id']} tidak ditemukan");
+                    }
+
+                    OrderItem::create([
+                        'order_id'    => $order->id,
+                        'menu_id'     => $item['menu_id'],
+                        'menu_name'   => $item['menu_name'],
+                        'qty'         => (int) $item['qty'],
+                        'unit_price'  => (float) $item['price'],
+                        'total_price' => (float) $item['subtotal'],
+                        'size'        => $item['size'] ?? 'Regular',
+                        'sugar_level' => $item['sugar_level'] ?? 'Normal',
+                        'notes'       => $item['notes'] ?? null,
+                        'category'    => $item['category'],
+                    ]);
+                }
+
+                $invoice = Invoice::create([
+                    'invoice_number' => Invoice::generateInvoiceNumber(),
+                    'order_id'       => $order->id,
+                    'customer_id'    => $customer->id,
+                    'invoice_date'   => now(),
+                    'type'           => $request->order_type,
+                    'subtotal'       => $request->subtotal,
+                    'tax'            => $request->tax,
+                    'total_net'      => $request->total_payment,
+                    'status'         => 'paid',
+                ]);
+
+                foreach ($request->cartItems as $item) {
+                    InvoiceItem::create([
+                        'invoice_id'  => $invoice->id,
+                        'menu_id'     => $item['menu_id'],
+                        'menu_name'   => $item['menu_name'],
+                        'qty'         => (int) $item['qty'],
+                        'unit_price'  => (float) $item['price'],
+                        'total_price' => (float) $item['subtotal'],
+                        'size'        => $item['size'] ?? 'Regular',
+                        'sugar_level' => $item['sugar_level'] ?? 'Normal',
+                        'notes'       => $item['notes'] ?? null,
+                        'category'    => $item['category'],
+                        'status'      => 'paid'
+                    ]);
+                }
+
+                // 8. Send email (try-catch agar tidak ganggu transaksi)
+                try {
+                    Mail::to($user->email)->send(new OrderMail($order, $customer, $user));
+                } catch (\Exception $mailException) {
+                    \Log::error('Failed to send order email: ' . $mailException->getMessage());
+                }
+
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Order berhasil dibuat',
+                    'data' => [
+                        'order' => $order->load(['customer', 'orderItems', 'table']),
+                        'invoice' => $invoice,
+                        'customer' => $customer
+                    ]
+                ], 201);
+            }
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Order creation failed: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat membuat order',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -173,19 +236,7 @@ class OrderController extends Controller
      */
     public function edit($id)
     {
-        $orders = Order::query()
-            ->with([
-                'customer.user',
-                'table',
-                'orderItem'
-            ])
-            ->find($id);
-
-        $data = [
-            'data' => $orders,
-        ];
-
-        return $data;
+        //
     }
 
     /**
@@ -196,51 +247,7 @@ class OrderController extends Controller
      */
     public function update(Request $request, $id)
     {
-        // DB::beginTransaction();
-        // try {
-        //     $customer = customer::findOrFail($id);
-        //     $postData = $request->all();
-
-        //     $rules = [
-        //         'name'      => 'required',
-        //         'email'     => 'required|email|unique:users,email,' . $customer->user_id,
-        //         'phone'     => 'required',
-        //     ];
-
-        //     $messages = [
-        //         'name.required'      => 'Nama harus diisi',
-        //         'email.required'     => 'Email harus diisi',
-        //         'email.email'        => 'Format email tidak valid',
-        //         'email.unique'       => 'Email sudah digunakan',
-        //         'phone.required'     => 'Nomor Telepon harus diisi',
-        //     ];
-
-        //     $validator = Validator::make($postData, $rules, $messages);
-        //     if ($validator->fails()) {
-        //         return response()->json(['errors' => $validator->messages()->toArray()], 422);
-        //     }
-
-        //     $customer->update([
-        //         'name' => $request->name,
-        //         'phone' => $request->phone,
-        //     ]);
-
-        //     $customer->user->update([
-        //         'email' => $request->email
-        //     ]);
-
-        //     DB::commit();
-        //     return response()->json([
-        //         'message' => 'Customer updated successfully.',
-        //         'data' => $customer
-        //     ], 200);
-        // } catch (\Exception $e) {
-        //     DB::rollBack();
-        //     return response()->json([
-        //         'message' => 'Something went wrong',
-        //         'error' => $e->getMessage()
-        //     ], 500);
-        // }
+        //
     }
 
     /**
@@ -250,33 +257,6 @@ class OrderController extends Controller
      */
     public function destroy($id)
     {
-        $order = Order::withTrashed()->find($id);
-
-        if (!$order) {
-            return response()->json(['message' => 'Order tidak ditemukan'], 404);
-        }
-
-        $order->delete();
-
-        return response()->json([
-            'message' => 'Order berhasil dihapus.',
-            'data' => new OrderResource($order),
-        ]);
-    }
-
-    public function active(Request $request, $id)
-    {
-        $order = Order::withTrashed()->find($id);
-
-        if (!$order) {
-            return response()->json(['message' => 'Order tidak ditemukan'], 404);
-        }
-
-        $order->restore();
-
-        return response()->json([
-            'message' => 'Order berhasil diaktifkan.',
-            'data' => new OrderResource($order),
-        ]);
+        //
     }
 }

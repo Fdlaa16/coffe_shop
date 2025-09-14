@@ -46,6 +46,11 @@ class Table extends Model
 
     public function order()
     {
-        return $this->hasMany(Order::class, 'table_id', 'id');
+        return $this->belongsTo(Order::class, 'id');
+    }
+
+    public function invoice()
+    {
+        return $this->belongsTo(Invoice::class, 'id');
     }
 }

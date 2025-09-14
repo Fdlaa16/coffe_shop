@@ -11,6 +11,10 @@ export default [
             title: 'Orders',
             to: 'dashboards-order-list',
           },
+          {
+            title: 'Invoice',
+            to: 'dashboards-invoice-list',
+          },
         ],
       },
     ],

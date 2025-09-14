@@ -13,21 +13,20 @@ return new class extends Migration
     {
         Schema::create('order_items', function (Blueprint $table) {
             $table->id();
-            $table->nullableMorphs('itemable');
-
-            $table->string('type');
-            $table->string('code')->nullable();
             $table->unsignedBigInteger('order_id')->nullable();
-            $table->string('qty')->nullable();
-            $table->string('price')->nullable();
-            $table->string('status')->nullable();
+            $table->unsignedBigInteger('menu_id')->nullable();
+            $table->string('menu_name');
+            $table->integer('qty')->default(1);
+            $table->decimal('unit_price', 15, 2)->default(0);
+            $table->decimal('total_price', 15, 2)->default(0);
+            $table->string('size')->nullable();
+            $table->string('sugar_level')->nullable();
+            $table->text('notes')->nullable();
+            $table->string('category')->nullable();
             $table->timestamps();
             $table->softDeletes();
-
-            $table->index(['itemable_id', 'itemable_type', 'type']);
         });
     }
-
     /**
      * Reverse the migrations.
      */

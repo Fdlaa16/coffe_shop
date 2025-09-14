@@ -88,24 +88,14 @@ export const db: DB = {
           title: 'Customers',
         },
         {
-          url: { name: 'dashboards-food-list' },
+          url: { name: 'dashboards-menu-list' },
           icon: 'tabler-user',
-          title: 'Foods',
+          title: 'Menus',
         },
         {
-          url: { name: 'dashboards-food-edit-id' },
+          url: { name: 'dashboards-menu-edit-id' },
           icon: 'tabler-user',
-          title: 'Foods',
-        },
-        {
-          url: { name: 'dashboards-drink-list' },
-          icon: 'tabler-shirt',
-          title: 'Drinks',
-        },
-        {
-          url: { name: 'dashboards-drink-edit-id' },
-          icon: 'tabler-shirt',
-          title: 'Drinks',
+          title: 'Menus',
         },
       ]
     },

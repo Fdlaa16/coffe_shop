@@ -46,7 +46,7 @@ const submitForm = () => {
 <template>
   <form @submit.prevent="$emit('submit')">
     <div class="d-flex flex-column gap-6 mb-6">
-      <VCard :title="props.data.id ? 'Edit Customer' : 'Create Customer'">
+      <VCard :title="props.data.id ? 'Ubah Customer' : 'Buat Customer'">
         <VCardText>
           <VWindow>
             <!-- Tab Biodata -->
@@ -67,7 +67,7 @@ const submitForm = () => {
                     <VCol cols="6">
                         <AppTextField
                             v-model="localData.name"
-                            label="Name"
+                            label="Nama"
                             placeholder="Contoh: Budi"
                         />
                     </VCol>
@@ -75,7 +75,7 @@ const submitForm = () => {
                     <VCol cols="6">
                         <AppTextField
                             v-model="localData.phone"
-                            label="price"
+                            label="Harga"
                             placeholder="Contoh: 081234567890"
                         />
                     </VCol> 

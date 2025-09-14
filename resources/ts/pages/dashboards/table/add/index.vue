@@ -17,13 +17,10 @@ const tableData = ref<TableData>({
 })
 
 const handleSubmit = async () => {
-  const formData = new FormData();
-  formData.append('name', tableData.value.name);
-
   try {
     const response = await $api('table/store', {
       method: 'POST',
-      body: formData,
+      body: {}, 
     });
 
     snackbarMessage.value = 'Data berhasil dibuat!';

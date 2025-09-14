@@ -48,9 +48,9 @@ const widgetData = ref([
 
 const headers = [
   { title: 'ID', key: 'id' },
-  { title: 'Code', key: 'code' },
-  { title: 'Name', key: 'name' },
-  { title: 'Action', key: 'action', sortable: false },
+  { title: 'Kode QR', key: 'qr_code', sortable: false },
+  { title: 'Kode', key: 'code' },
+  { title: 'Aksi', key: 'action', sortable: false },
 ]
 
 const paginatedTables = computed(() => {
@@ -76,9 +76,9 @@ async function fetchTable() {
     const totals = response.totals
 
     widgetData.value = [
-      { title: 'All', value: totals.all, icon: 'tabler-border-all', iconColor: 'primary', change: 0, desc: 'Total semua club' },
-      { title: 'Active', value: totals.active, icon: 'tabler-border-all', iconColor: 'success', change: 0, desc: 'Club aktif' },
-      { title: 'Non Active', value: totals.in_active, icon: 'tabler-border-all', iconColor: 'error', change: 0, desc: 'Club tidak aktif' },
+      { title: 'All', value: totals.all, icon: 'tabler-border-all', iconColor: 'primary', change: 0, desc: 'Total semua meja' },
+      { title: 'Active', value: totals.active, icon: 'tabler-border-all', iconColor: 'success', change: 0, desc: 'Meja aktif' },
+      { title: 'Non Active', value: totals.in_active, icon: 'tabler-border-all', iconColor: 'error', change: 0, desc: 'Meja tidak aktif' },
     ]
 
   } catch (err: any) {
@@ -91,6 +91,54 @@ async function fetchTable() {
 function editTable(table: any) {
   router.push({ name: 'dashboards-table-edit-id', params: { id: table.id } })
 }
+
+const qrDownloadLoading = ref(false);
+const downloadQr = async (item) => {
+  qrDownloadLoading.value = true;
+  
+  try {
+    const response = await $api(`table/${item.id}/download-qr`, {
+      method: 'GET',
+      responseType: 'blob',
+    });
+
+    const blob = new Blob([response], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+    const filename = `qr_table_${item.table_number || item.id}_${timestamp}.pdf`;
+    link.download = filename;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    // Success notification
+    snackbarMessage.value = 'QR Code berhasil diunduh';
+    snackbarColor.value = 'success';
+    isSnackbarVisible.value = true;
+
+  } catch (err) {
+    console.error('Download QR error:', err);
+    
+    let errorMessage = 'Gagal mengunduh QR Code';
+    if (err?.response?.data?.error) {
+      errorMessage = err.response.data.error;
+    } else if (err?.response?.data?.message) {
+      errorMessage = err.response.data.message;
+    }
+    
+    snackbarMessage.value = errorMessage;
+    snackbarColor.value = 'error';
+    isSnackbarVisible.value = true;
+  } finally {
+    qrDownloadLoading.value = false;
+  }
+};
+
 
 async function deleteTable(table: any) {
   const confirm = await Swal.fire({
@@ -319,7 +367,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
             >
              <AppTextField
                 v-model="searchQuery"
-                placeholder="Search table"
+                placeholder="Cari Meja"
               />
             </VCol>
 
@@ -353,7 +401,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 clear-icon="tabler-x"
                 single-line
                 :items="[
-                  { title: 'Pilih Sort', value: '' },
+                  { title: 'Pilih Sortir', value: '' },
                   { title: 'A-Z', value: 'asc' },
                   { title: 'Z-A', value: 'desc' },
                 ]"
@@ -367,7 +415,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
               prepend-icon="tabler-plus"
               :to="{ name: 'dashboards-table-add' }"
             >
-              Add New table
+              Tambah Meja Baru
             </VBtn>
           </div>
           </VRow>
@@ -387,12 +435,12 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
             <div class="text-body-1">{{ item.id }}</div>
           </template>
 
-          <template #item.code="{ item }">
-            <div class="text-body-1">{{ item.code }}</div>
+          <template v-slot:item.qr_code="{ item }">
+            <img :src="item.qr_code" alt="QR Code" class="w-10 h-10" />
           </template>
 
-          <template #item.name="{ item }">
-            <div class="text-body-1">{{ item.name }}</div>
+          <template #item.code="{ item }">
+            <div class="text-body-1">{{ item.code }}</div>
           </template>
 
           <template #item.action="{ item }">
@@ -403,9 +451,19 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="primary"
                 @click="editTable(item)"
-                title="Edit"
+                title="Ubah"
               >
                 <VIcon icon="tabler-pencil" />
+              </VBtn>
+
+              <VBtn
+                icon
+                size="small"
+                color="primary"
+                @click="downloadQr(item)"
+                title="Unduh"
+              >
+                <VIcon icon="tabler-download" />
               </VBtn>
 
               <VBtn  
@@ -414,7 +472,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="error"
                 @click="deleteTable(item)"
-                title="Delete"
+                title="Hapus"
               >
                 <VIcon icon="tabler-trash" />
               </VBtn>
@@ -425,7 +483,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="success"
                 @click="activateTable(item)"
-                title="Activate"
+                title="Aktifkan"
               >
                 <VIcon icon="tabler-check" />
               </VBtn>

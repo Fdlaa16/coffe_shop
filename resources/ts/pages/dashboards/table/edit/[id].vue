@@ -39,15 +39,10 @@ onMounted(async () => {
 });
 
 const handleSubmit = async () => {
-  try {        
-    const formData = new FormData();
-    formData.append('_method', 'PUT'); 
-
-    formData.append('name', tableData.value.name);
-
+  try {
     const res = await $api(`table/${tableId}`, {
-      method: 'POST',
-      body: formData,
+      method: 'PUT',
+      body: {},
     });
 
     snackbarMessage.value = 'Data berhasil diperbarui!';
@@ -56,24 +51,23 @@ const handleSubmit = async () => {
 
     router.push({
       name: 'dashboards-table-list',
-      query: {
-        success: 'Data berhasil diperbarui!',
-      },
+      query: { success: 'Data berhasil diperbarui!' },
     });
   } catch (err: any) {
-    const errors = err?.data?.errors
+    const errors = err?.data?.errors;
 
     if (err?.status === 422 && errors) {
-      const messages = Object.values(errors).flat()
-      snackbarMessage.value = 'Validasi gagal: ' + messages.join(', ')
+      const messages = Object.values(errors).flat();
+      snackbarMessage.value = 'Validasi gagal: ' + messages.join(', ');
     } else {
-      snackbarMessage.value = 'Gagal mengirim data: ' + (err?.message || 'Unknown error')
+      snackbarMessage.value = 'Gagal mengirim data: ' + (err?.message || 'Unknown error');
     }
 
-    snackbarColor.value = 'error'
-    isFlatSnackbarVisible.value = true
+    snackbarColor.value = 'error';
+    isFlatSnackbarVisible.value = true;
   }
 };
+
 
 const onSubmit = () => {
   handleSubmit()

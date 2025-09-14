@@ -37,8 +37,7 @@ class File extends Model
     ];
 
     public static $file_directories = [
-        'food_photo' => 'food_photo/',
-        'drink_photo' => 'drink_photo/',
+        'menu_photo' => 'menu_photo/',
     ];
 
     public function getDirectory($type)

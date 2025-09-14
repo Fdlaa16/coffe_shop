@@ -13,18 +13,19 @@ return new class extends Migration
     {
         Schema::create('invoice_items', function (Blueprint $table) {
             $table->id();
-            $table->nullableMorphs('itemable');
-
-            $table->string('type');
-            $table->string('code')->nullable();
             $table->unsignedBigInteger('invoice_id')->nullable();
-            $table->string('qty')->nullable();
-            $table->string('total')->nullable();
+            $table->unsignedBigInteger('menu_id')->nullable();
+            $table->string('menu_name');
+            $table->integer('qty')->default(1);
+            $table->decimal('unit_price', 15, 2)->default(0);
+            $table->decimal('total_price', 15, 2)->default(0);
+            $table->string('size')->nullable();
+            $table->string('sugar_level')->nullable();
+            $table->text('notes')->nullable();
+            $table->string('category')->nullable();
             $table->string('status')->nullable();
             $table->timestamps();
             $table->softDeletes();
-
-            $table->index(['itemable_id', 'itemable_type', 'type']);
         });
     }
 

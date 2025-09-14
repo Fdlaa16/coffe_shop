@@ -17,6 +17,8 @@ return new class extends Migration
             $table->unsignedBigInteger('customer_id')->nullable();
             $table->unsignedBigInteger('table_id')->nullable();
             $table->date('order_date')->nullable();
+            $table->string('subtotal')->nullable();
+            $table->string('tax')->nullable();
             $table->string('total_net')->nullable();
             $table->string('status')->nullable();
             $table->timestamps();

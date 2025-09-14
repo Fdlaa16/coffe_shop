@@ -15,6 +15,8 @@ class Order extends Model
         'customer_id',
         'table_id',
         'order_date',
+        'subtotal',
+        'tax',
         'total_net',
         'status',
     ];
@@ -49,10 +51,10 @@ class Order extends Model
 
     public function invoice()
     {
-        return $this->belongsTo(Invoice::class, 'order_id', 'id');
+        return $this->hasOne(Invoice::class, 'order_id', 'id');
     }
 
-    public function orderItem()
+    public function orderItems()
     {
         return $this->hasMany(OrderItem::class, 'order_id', 'id');
     }

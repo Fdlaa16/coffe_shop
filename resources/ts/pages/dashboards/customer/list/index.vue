@@ -25,6 +25,7 @@ const itemsPerPage = 5
 const isSnackbarVisible = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref<'success' | 'error'>('success')
+const exportLoading = ref(false)
 
 onMounted(() => {
   if (route.query.success) {
@@ -48,11 +49,11 @@ const widgetData = ref([
 
 const headers = [
   { title: 'ID', key: 'id' },
-  { title: 'Code', key: 'code' },
-  { title: 'Name', key: 'name' },
+  { title: 'Kode', key: 'code' },
+  { title: 'Nama', key: 'name' },
   { title: 'Email', key: 'user.email' },
-  { title: 'Phone', key: 'phone' },
-  { title: 'Action', key: 'action', sortable: false },
+  { title: 'Nomor Telepon', key: 'phone' },
+  { title: 'Aksi', key: 'action', sortable: false },
 ]
 
 const paginatedCustomers = computed(() => {
@@ -78,9 +79,9 @@ async function fetchCustomer() {
     const totals = response.totals
 
     widgetData.value = [
-      { title: 'All', value: totals.all, icon: 'tabler-user', iconColor: 'primary', change: 0, desc: 'Total semua club' },
-      { title: 'Active', value: totals.active, icon: 'tabler-user', iconColor: 'success', change: 0, desc: 'Club aktif' },
-      { title: 'Non Active', value: totals.in_active, icon: 'tabler-user', iconColor: 'error', change: 0, desc: 'Club tidak aktif' },
+      { title: 'All', value: totals.all, icon: 'tabler-user', iconColor: 'primary', change: 0, desc: 'Total semua pelanggan' },
+      { title: 'Active', value: totals.active, icon: 'tabler-user', iconColor: 'success', change: 0, desc: 'Pelanggan aktif' },
+      { title: 'Non Active', value: totals.in_active, icon: 'tabler-user', iconColor: 'error', change: 0, desc: 'Pelanggan tidak aktif' },
     ]
 
   } catch (err: any) {
@@ -237,6 +238,52 @@ function getQueryParam(param: LocationQueryValue | LocationQueryValue[] | undefi
   return Array.isArray(param) ? param[0] || '' : param || ''
 }
 
+const exportCustomers = async () => {
+  exportLoading.value = true
+  
+  try {
+    const response = await $api(`customer/export`, {
+      method: 'POST',
+      params: {
+        format: 'xlsx',
+        search: searchQuery.value,
+        status: selectedStatus.value,
+        sort: selectedSort.value,
+      },
+      responseType: 'blob',
+    })
+
+    const blob = new Blob([response], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    })
+    
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
+    link.download = `Customers_Export_${timestamp}.xlsx`
+    
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    window.URL.revokeObjectURL(url)
+
+    snackbarMessage.value = 'Data berhasil diekspor'
+    snackbarColor.value = 'success'
+    isSnackbarVisible.value = true
+
+  } catch (err: any) {
+    console.error('Export error:', err)
+    snackbarMessage.value = err?.response?.data?.message || 'Gagal mengekspor data'
+    snackbarColor.value = 'error'
+    isSnackbarVisible.value = true
+  } finally {
+    exportLoading.value = false
+  }
+}
+
 onMounted(() => {
   searchQuery.value = getQueryParam(route.query.search)
   selectedStatus.value = getQueryParam(route.query.status)
@@ -310,7 +357,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
 
       <VCard class="mb-6">
         <VCardItem class="pb-4">
-          <VCardTitle>Customers</VCardTitle>
+          <VCardTitle>Pelanggan</VCardTitle>
         </VCardItem>
 
         <VCardText>
@@ -321,7 +368,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
             >
              <AppTextField
                 v-model="searchQuery"
-                placeholder="Search Customer"
+                placeholder="Cari Pelanggan"
               />
             </VCol>
 
@@ -355,7 +402,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 clear-icon="tabler-x"
                 single-line
                 :items="[
-                  { title: 'Pilih Sort', value: '' },
+                  { title: 'Pilih Sortir', value: '' },
                   { title: 'A-Z', value: 'asc' },
                   { title: 'Z-A', value: 'desc' },
                 ]"
@@ -364,14 +411,15 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
 
             <VSpacer />
 
-          <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-            <VBtn
-              prepend-icon="tabler-plus"
-              :to="{ name: 'dashboards-customer-add' }"
-            >
-              Add New Customer
-            </VBtn>
-          </div>
+            <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
+              <VBtn
+                color="warning"
+                prepend-icon="tabler-upload"
+                @click="exportCustomers()"
+              >
+                Ekspor
+              </VBtn>
+            </div>
           </VRow>
         </VCardText>
 
@@ -413,7 +461,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="primary"
                 @click="editCustomer(item)"
-                title="Edit"
+                title="Ubah"
               >
                 <VIcon icon="tabler-pencil" />
               </VBtn>
@@ -424,7 +472,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="error"
                 @click="deleteCustomer(item)"
-                title="Delete"
+                title="Hapus"
               >
                 <VIcon icon="tabler-trash" />
               </VBtn>
@@ -435,7 +483,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="success"
                 @click="activateCustomer(item)"
-                title="Activate"
+                title="Aktifkan"
               >
                 <VIcon icon="tabler-check" />
               </VBtn>

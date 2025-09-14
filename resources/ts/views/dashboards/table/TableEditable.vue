@@ -68,29 +68,10 @@ onBeforeUnmount(() => {
 <template>
   <form @submit.prevent="$emit('submit')">
     <div class="d-flex flex-column gap-6 mb-6">
-      <VCard :title="props.data.id ? 'Edit Food' : 'Create Food'">
-        <VCardText>
-          <VWindow>
-            <!-- Tab Biodata -->
-            <VWindowItem >
-              <VRow>
-                <VCol cols="12" class="text-no-wrap">
-                  <VRow class="justify-center align-center">
-                    <VCol cols="12">
-                        <AppTextField
-                            v-model="localData.name"
-                            label="name"
-                            placeholder="Contoh: Rendang"
-                        />
-                    </VCol>
-                  </VRow>
-                </VCol>
-              </VRow>
-            </VWindowItem>
-          </VWindow>
+      <VCard :title="props.data.id ? 'Ubah Meja' : 'Buat Meja'">
+        <VCardText class="mt-4">
+          <p>Klik tombol di bawah untuk membuat meja baru. Kode meja akan otomatis dibuat.</p>
         </VCardText>
-
-        <!-- Tombol Submit -->
         <VCol cols="12" class="d-flex justify-end">
           <VBtn
             color="primary"

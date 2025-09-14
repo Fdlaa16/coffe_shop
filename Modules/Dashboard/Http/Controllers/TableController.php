@@ -5,11 +5,13 @@ namespace Modules\Dashboard\Http\Controllers;
 use App\Helpers\Helper;
 use App\Http\Resources\TableResource;
 use App\Models\Table;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class TableController extends Controller
 {
@@ -80,10 +82,21 @@ class TableController extends Controller
             })
             ->first();
 
+        $tables = $tablesQuery->get()->map(function ($table) {
+            $url = url('/front-pages/home/' . $table->id);
+            $qr = QrCode::format('png')->size(100)->generate($url);
+
+            $table->qr_code = 'data:image/png;base64,' . base64_encode($qr);
+            $table->qr_url = $url;
+
+            return $table;
+        });
+
         $responseTotals = [
             'all' => (int) $statusCounts->total,
             'active' => (int) $statusCounts->active,
             'in_active' => (int) $statusCounts->in_active,
+            'qr_code' => $tables
         ];
 
         return response()->json([
@@ -110,30 +123,14 @@ class TableController extends Controller
     {
         DB::beginTransaction();
         try {
-            $postData = $request->all();
-            $rules = [
-                'name' => 'required',
-            ];
+            $table = Table::create();
 
-            $messages = [
-                'name.required' => 'Nama harus diisi',
-            ];
+            DB::commit();
 
-            $validator = Validator::make($postData, $rules, $messages);
-
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->messages()->toArray()], 422);
-            } else {
-                $table = Table::create([
-                    'name' => $request->name,
-                ]);
-
-                DB::commit();
-                return response()->json([
-                    'message' => 'Table created successfully.',
-                    'data' => $table
-                ], 201);
-            }
+            return response()->json([
+                'message' => 'Table created successfully.',
+                'data' => $table
+            ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -142,6 +139,7 @@ class TableController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * Show the specified resource.
@@ -180,25 +178,7 @@ class TableController extends Controller
     {
         DB::beginTransaction();
         try {
-            $table = table::findOrFail($id);
-            $postData = $request->all();
-
-            $rules = [
-                'name' => 'required',
-            ];
-
-            $messages = [
-                'name.required' => 'Nama harus diisi',
-            ];
-
-            $validator = Validator::make($postData, $rules, $messages);
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->messages()->toArray()], 422);
-            }
-
-            $table->update([
-                'name' => $request->name,
-            ]);
+            $table = Table::findOrFail($id);
 
             DB::commit();
             return response()->json([
@@ -249,5 +229,75 @@ class TableController extends Controller
             'message' => 'Table berhasil diaktifkan.',
             'data' => new TableResource($table),
         ]);
+    }
+
+    public function downloadQr($id)
+    {
+        try {
+            // Ambil data table dengan semua relasinya
+            $table = Table::query()
+                ->withTrashed()
+                ->find($id);
+
+            if (!$table) {
+                return response()->json(['error' => 'Table tidak ditemukan'], 404);
+            }
+
+            // Generate QR Code URL atau data
+            $qrData = url("/table/{$table->id}");
+
+            // Load logo dari storage dan konversi ke base64
+            $logoPath = public_path('images/logo/papasans.png');
+            $base64Logo = null;
+
+            if (file_exists($logoPath)) {
+                $type = pathinfo($logoPath, PATHINFO_EXTENSION);
+                $data = file_get_contents($logoPath);
+                $base64Logo = 'data:image/' . $type . ';base64,' . base64_encode($data);
+            }
+
+            // Generate QR Code sebagai base64 dengan Simple QR Code
+            $qrCodePng = QrCode::format('png')
+                ->size(400)
+                ->margin(2)
+                ->errorCorrection('M')
+                ->generate($qrData);
+
+            $qrCode = 'data:image/png;base64,' . base64_encode($qrCodePng);
+
+            // Siapkan data untuk view
+            $data = [
+                'table' => $table,
+                'qr_code' => $qrCode,
+                'qr_data' => $qrData,
+                'title' => 'QR Code - Table ' . $table->table_number,
+                'generated_at' => now()->format('d/m/Y H:i:s'),
+                'logo' => $base64Logo,
+            ];
+
+            // Generate PDF
+            $pdf = Pdf::loadView('download.qr', $data)
+                ->setPaper('A4', 'portrait')
+                ->setOptions([
+                    'isRemoteEnabled' => true,
+                    'isHtml5ParserEnabled' => true,
+                    'dpi' => 150,
+                    'defaultFont' => 'Arial',
+                    'margin-top' => 10,
+                    'margin-right' => 10,
+                    'margin-bottom' => 10,
+                    'margin-left' => 10,
+                ]);
+
+            // Nama file download
+            $filename = 'qr_table_' . $table->table_number . '_' . date('YmdHis') . '.pdf';
+
+            return $pdf->download($filename);
+        } catch (\Exception $e) {
+            \Log::error('Error downloading QR: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Gagal mengunduh QR code: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

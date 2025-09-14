@@ -8,19 +8,15 @@ export default [
         icon: { icon: 'tabler-logs' },
         children: [
           {
-            title: 'Customers',
+            title: 'Pelanggan',
             to: 'dashboards-customer-list',
           },
           {
-            title: 'Foods',
-            to: 'dashboards-food-list',
+            title: 'Menu',
+            to: 'dashboards-menu-list',
           },
           {
-            title: 'Drinks',
-            to: 'dashboards-drink-list',
-          },
-          {
-            title: 'Tables',
+            title: 'Meja',
             to: 'dashboards-table-list',
           }
         ],

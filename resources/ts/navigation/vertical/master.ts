@@ -4,10 +4,9 @@ export default [
     title: 'Master Data',
     icon: { icon: 'tabler-logs' },
     children: [
-      { title: 'Customers', to: 'dashboards-customer-list', },
-      { title: 'Foods', to: 'dashboards-food-list', },
-      { title: 'Drinks', to: 'dashboards-drink-list', },
-      { title: 'Tables', to: 'dashboards-table-list', },
+      { title: 'Pelanggan', to: 'dashboards-customer-list', },
+      { title: 'Menu', to: 'dashboards-menu-list', },
+      { title: 'Meja', to: 'dashboards-table-list', },
     ],
   },
 ]

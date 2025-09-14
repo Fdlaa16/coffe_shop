@@ -8,13 +8,20 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class InvoiceItem extends Model
 {
-    use HasFactory, Softdeletes;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'code',
         'invoice_id',
+        'menu_id',
+        'menu_name',
         'qty',
-        'total',
+        'unit_price',
+        'total_price',
+        'size',
+        'sugar_level',
+        'notes',
+        'category',
         'status',
     ];
 
@@ -23,23 +30,8 @@ class InvoiceItem extends Model
         return $this->morphTo();
     }
 
-    public function orderItem()
-    {
-        return $this->belongsTo(OrderItem::class, 'itemable_id', 'id')->whereItemableType('itemable_type', OrderItem::class);
-    }
-
     public function invoice()
     {
         return $this->belongsTo(Invoice::class, 'invoice_id', 'id');
-    }
-
-    public function customer()
-    {
-        return $this->belongsTo(Customer::class, 'customer_id', 'id');
-    }
-
-    public function order()
-    {
-        return $this->belongsTo(Order::class, 'invoice_id', 'id');
     }
 }

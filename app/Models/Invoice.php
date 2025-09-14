@@ -6,40 +6,55 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Invoice extends Model
 {
-    use HasFactory, Softdeletes;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        'order_id',
+        'customer_id',
         'invoice_number',
         'invoice_date',
         'expired_date',
-        'order_id',
-        'customer_id',
         'type',
+        'subtotal',
+        'tax',
         'total_net',
         'status',
     ];
 
-    public static function getNextInvoiceNumber()
+    // protected static function boot()
+    // {
+    //     parent::boot();
+
+    //     static::creating(function ($model) {
+    //         try {
+    //             $model->transaction_id = (string)Str::orderedUuid();
+    //         } catch (\Exception $e) {
+    //             abort(500, $e->getMessage());
+    //         }
+    //     });
+    // }
+
+    public static function generateInvoiceNumber()
     {
         $currentDate = Carbon::now()->format('ymd');
         $lastInvoiceRecord = Invoice::where('invoice_number', '!=', '')->withTrashed()->latest()->first();
         if ($lastInvoiceRecord) {
-            $arrLastInoiceNumber = explode('-', $lastInvoiceRecord->invoice_number);
-            $newInvoiceNumber = str_pad(((int)$arrLastInoiceNumber[2] + 1), 4, '0', STR_PAD_LEFT);
+            $arrLastInvoiceNumber = explode('-', $lastInvoiceRecord->invoice_number);
+            $newInvoiceNumber = str_pad(((int)$arrLastInvoiceNumber[2] + 1), 4, '0', STR_PAD_LEFT);
             $invoiceNumber = 'INV-' . $currentDate . '-' . ($newInvoiceNumber);
         } else {
             $invoiceNumber = 'INV-' . $currentDate . '-0001';
         }
-
         return $invoiceNumber;
     }
 
-    public function invoiceItem()
+    public function order()
     {
-        return $this->hasMany(InvoiceItem::class, 'invoice_id', 'id');
+        return $this->belongsTo(Order::class, 'order_id', 'id');
     }
 
     public function customer()
@@ -47,8 +62,13 @@ class Invoice extends Model
         return $this->belongsTo(Customer::class, 'customer_id', 'id');
     }
 
-    public function order()
+    public function invoiceItems()
     {
-        return $this->belongsTo(Order::class, 'order_id', 'id');
+        return $this->hasMany(InvoiceItem::class, 'invoice_id', 'id');
+    }
+
+    public function table()
+    {
+        return $this->hasOne(Table::class, 'id');
     }
 }

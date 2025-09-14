@@ -24,7 +24,8 @@ const currentPage = ref(1)
 const itemsPerPage = 5 
 const isSnackbarVisible = ref(false)
 const snackbarMessage = ref('')
-const snackbarColor = ref<'success' | 'error'>('success')
+const snackbarColor = ref<'success' | 'warning' | 'error'>('success')
+const exportLoading = ref(false)
 
 onMounted(() => {
   if (route.query.success) {
@@ -48,11 +49,11 @@ const widgetData = ref([
 
 const headers = [
   { title: 'ID', key: 'id' },
-  { title: 'Code', key: 'code' },
-  { title: 'Name', key: 'name' },
-  { title: 'Qty', key: 'qty' },
-  { title: 'Price', key: 'price' },
-  { title: 'Action', key: 'action', sortable: false },
+  { title: 'Kode', key: 'code' },
+  { title: 'Meja', key: 'table.id' },
+  { title: 'Tanggal Pesanan', key: 'order_date' },
+  { title: 'Status', key: 'status' },
+  { title: 'Aksi', key: 'action', sortable: false },
 ]
 
 const paginatedOrders = computed(() => {
@@ -78,9 +79,9 @@ async function fetchOrder() {
     const totals = response.totals
 
     widgetData.value = [
-      { title: 'All', value: totals.all, icon: 'tabler-receipt-2', iconColor: 'primary', change: 0, desc: 'Total semua club' },
-      { title: 'Active', value: totals.active, icon: 'tabler-receipt-2', iconColor: 'success', change: 0, desc: 'Club aktif' },
-      { title: 'Non Active', value: totals.in_active, icon: 'tabler-receipt-2', iconColor: 'error', change: 0, desc: 'Club tidak aktif' },
+      { title: 'All', value: totals.all, icon: 'tabler-receipt-2', iconColor: 'primary', change: 0, desc: 'Total semua pesanan' },
+      { title: 'Active', value: totals.active, icon: 'tabler-receipt-2', iconColor: 'success', change: 0, desc: 'Pesanan aktif' },
+      { title: 'Non Active', value: totals.in_active, icon: 'tabler-receipt-2', iconColor: 'error', change: 0, desc: 'Pesanan tidak aktif' },
     ]
 
   } catch (err: any) {
@@ -94,10 +95,116 @@ function editOrder(order: any) {
   router.push({ name: 'dashboards-order-edit-id', params: { id: order.id } })
 }
 
+async function processOrder(order: any) {
+  const confirm = await Swal.fire({
+    title: 'Memproses pesanan?',
+    text: `Pesanan ${order.name} akan diproses?.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, proses!',
+    cancelButtonText: 'Batal',
+    customClass: {
+      confirmButton: 'swal2-confirm-btn',
+      cancelButton: 'swal2-cancel-btn',
+    },
+  })
+
+  if (confirm.isConfirmed) {
+    try {
+      loading.value = true
+
+      await $api(`order/${order.id}/process`, {
+        method: 'PUT',
+      })
+
+      await fetchOrder()
+
+      snackbarMessage.value = 'Pesanan sedang diproses'
+      snackbarColor.value = 'warning'
+      isSnackbarVisible.value = true
+    } catch (err: any) {
+      snackbarMessage.value = err?.response?.data?.message || 'Gagal mengaktifkan proses pesanan'
+      snackbarColor.value = 'error'
+      isSnackbarVisible.value = true
+    } finally {
+      loading.value = false
+    }
+  }
+}
+
+async function finishedOrder(order: any) {
+  const confirm = await Swal.fire({
+    title: 'Pesanan Selesai Diproses?',
+    text: `Apakah pesanan sudah selesai diproses?.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, selesai!',
+    cancelButtonText: 'Batal',
+    customClass: {
+      confirmButton: 'swal2-confirm-btn',
+      cancelButton: 'swal2-cancel-btn',
+    },
+  })
+
+  if (confirm.isConfirmed) {
+    try {
+      loading.value = true
+
+      await $api(`order/${order.id}/finished`, {
+        method: 'PUT',
+      })
+
+      await fetchOrder()
+
+      snackbarMessage.value = 'Pesanan Selesai Diproses'
+      snackbarColor.value = 'success'
+      isSnackbarVisible.value = true
+    } catch (err: any) {
+      snackbarMessage.value = err?.response?.data?.message || 'Gagal mengaktifkan selesai proses menu pesanan'
+      snackbarColor.value = 'error'
+      isSnackbarVisible.value = true
+    } finally {
+      loading.value = false
+    }
+  }
+}
+
+async function rejectOrder(order: any) {
+  const result = await Swal.fire({
+    title: 'Tolak pesanan?',
+    text: `Pesanan ${order.name} akan ditolak?.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, tolak!',
+    cancelButtonText: 'Batal',
+    customClass: {
+      confirmButton: 'swal2-confirm-btn',
+      cancelButton: 'swal2-cancel-btn',
+    },
+  })
+
+  if (result.isConfirmed) {
+    $api(`order/${order.id}/reject`, {
+      method: 'PUT',
+    })
+      .then(() => {
+        fetchOrder()
+        snackbarMessage.value = 'Pesanan ditolak'
+        snackbarColor.value = 'success'
+        isSnackbarVisible.value = true
+      })
+      .catch((err: any) => {
+        snackbarMessage.value = err?.response?.data?.message || 'Gagal menolak pesanan'
+        snackbarColor.value = 'error'
+        isSnackbarVisible.value = true
+      })
+  }
+}
+
 async function deleteOrder(order: any) {
   const confirm = await Swal.fire({
     title: 'Apakah kamu yakin?',
-    text: `Data order dengan nama ${order.name} akan dihapus.`,
+    text: `Data pesanan dengan nama ${order.name} akan dihapus.`,
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: 'Ya, hapus!',
@@ -118,11 +225,11 @@ async function deleteOrder(order: any) {
 
       await fetchOrder()
 
-      snackbarMessage.value = 'Order berhasil dihapus'
+      snackbarMessage.value = 'Pesanan berhasil dihapus'
       snackbarColor.value = 'success'
       isSnackbarVisible.value = true
     } catch (err: any) {
-      snackbarMessage.value = err?.response?.data?.message || 'Gagal menghapus order'
+      snackbarMessage.value = err?.response?.data?.message || 'Gagal menghapus pesanan'
       snackbarColor.value = 'error'
       isSnackbarVisible.value = true
     } finally {
@@ -133,8 +240,8 @@ async function deleteOrder(order: any) {
 
 async function activateOrder(order: any) {
   const confirm = await Swal.fire({
-    title: 'Aktifkan order?',
-    text: `Order ${order.name} akan diaktifkan kembali.`,
+    title: 'Aktifkan pesanan?',
+    text: `Pesanan ${order.name} akan diaktifkan kembali.`,
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'Ya, aktifkan!',
@@ -155,11 +262,11 @@ async function activateOrder(order: any) {
 
       await fetchOrder()
 
-      snackbarMessage.value = 'Order berhasil diaktifkan kembali'
+      snackbarMessage.value = 'Pesanan berhasil diaktifkan kembali'
       snackbarColor.value = 'success'
       isSnackbarVisible.value = true
     } catch (err: any) {
-      snackbarMessage.value = err?.response?.data?.message || 'Gagal mengaktifkan order'
+      snackbarMessage.value = err?.response?.data?.message || 'Gagal mengaktifkan pesanan'
       snackbarColor.value = 'error'
       isSnackbarVisible.value = true
     } finally {
@@ -168,73 +275,54 @@ async function activateOrder(order: any) {
   }
 }
 
-async function approveOrder(order: any) {
-  const result = await Swal.fire({
-    title: 'Terima order?',
-    text: `Order ${order.name} akan diterima?.`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Ya, terima!',
-    cancelButtonText: 'Batal',
-    customClass: {
-      confirmButton: 'swal2-confirm-btn',
-      cancelButton: 'swal2-cancel-btn',
-    },
-  })
-
-  if (result.isConfirmed) {
-    $api(`order/${order.id}/approve`, {
-      method: 'PUT',
-    })
-      .then(() => {
-        fetchOrder()
-        snackbarMessage.value = 'Order diterima'
-        snackbarColor.value = 'success'
-        isSnackbarVisible.value = true
-      })
-      .catch((err: any) => {
-        snackbarMessage.value = err?.response?.data?.message || 'Gagal menerima order'
-        snackbarColor.value = 'error'
-        isSnackbarVisible.value = true
-      })
-  }
-}
-
-async function rejectOrder(order: any) {
-  const result = await Swal.fire({
-    title: 'Tolak order?',
-    text: `Order ${order.name} akan ditolak?.`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Ya, tolak!',
-    cancelButtonText: 'Batal',
-    customClass: {
-      confirmButton: 'swal2-confirm-btn',
-      cancelButton: 'swal2-cancel-btn',
-    },
-  })
-
-  if (result.isConfirmed) {
-    $api(`order/${order.id}/reject`, {
-      method: 'PUT',
-    })
-      .then(() => {
-        fetchOrder()
-        snackbarMessage.value = 'Order ditolak'
-        snackbarColor.value = 'success'
-        isSnackbarVisible.value = true
-      })
-      .catch((err: any) => {
-        snackbarMessage.value = err?.response?.data?.message || 'Gagal menolak order'
-        snackbarColor.value = 'error'
-        isSnackbarVisible.value = true
-      })
-  }
-}
-
-
 function getQueryParam(param: LocationQueryValue | LocationQueryValue[] | undefined): string {
   return Array.isArray(param) ? param[0] || '' : param || ''
+}
+
+const exportOrders = async () => {
+  exportLoading.value = true
+  
+  try {
+    const response = await $api(`order/export`, {
+      method: 'POST',
+      params: {
+        format: 'xlsx',
+        search: searchQuery.value,
+        status: selectedStatus.value,
+        sort: selectedSort.value,
+      },
+      responseType: 'blob',
+    })
+
+    const blob = new Blob([response], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    })
+    
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
+    link.download = `Orders_Export_${timestamp}.xlsx`
+    
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    window.URL.revokeObjectURL(url)
+
+    snackbarMessage.value = 'Data berhasil diekspor'
+    snackbarColor.value = 'success'
+    isSnackbarVisible.value = true
+
+  } catch (err: any) {
+    console.error('Export error:', err)
+    snackbarMessage.value = err?.response?.data?.message || 'Gagal mengekspor data'
+    snackbarColor.value = 'error'
+    isSnackbarVisible.value = true
+  } finally {
+    exportLoading.value = false
+  }
 }
 
 onMounted(() => {
@@ -310,7 +398,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
 
       <VCard class="mb-6">
         <VCardItem class="pb-4">
-          <VCardTitle>Orders</VCardTitle>
+          <VCardTitle>Pesanan</VCardTitle>
         </VCardItem>
 
         <VCardText>
@@ -355,7 +443,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 clear-icon="tabler-x"
                 single-line
                 :items="[
-                  { title: 'Pilih Sort', value: '' },
+                  { title: 'Pilih Sortir', value: '' },
                   { title: 'A-Z', value: 'asc' },
                   { title: 'Z-A', value: 'desc' },
                 ]"
@@ -364,14 +452,15 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
 
             <VSpacer />
 
-          <!-- <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
-            <VBtn
-              prepend-icon="tabler-plus"
-              :to="{ name: 'dashboards-order-add' }"
-            >
-              Add New order
-            </VBtn>
-          </div> -->
+            <div class="app-user-search-filter d-flex align-center flex-wrap gap-4">
+              <VBtn
+                color="warning"
+                prepend-icon="tabler-upload"
+                @click="exportOrders()"
+              >
+                Ekspor
+              </VBtn>
+            </div>
           </VRow>
         </VCardText>
 
@@ -389,20 +478,16 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
             <div class="text-body-1">{{ item.id }}</div>
           </template>
 
-          <template #item.code="{ item }">
-            <div class="text-body-1">{{ item.code }}</div>
+          <template #item.invoice_number="{ item }">
+            <div class="text-body-1">{{ item.invoice_number }}</div>
           </template>
 
-          <template #item.name="{ item }">
-            <div class="text-body-1">{{ item.name }}</div>
+          <template #item.table_id="{ item }">
+            <div class="text-body-1">{{ item.table_id }}</div>
           </template>
 
-          <template #item.qty="{ item }">
-            <div class="text-body-1">{{ item.qty }}</div>
-          </template>
-
-          <template #item.price="{ item }">
-            <div class="text-body-1">{{ item.price }}</div>
+          <template #item.status="{ item }">
+            <div class="text-body-1">{{ item.status }}</div>
           </template>
 
           <template #item.action="{ item }">
@@ -413,18 +498,51 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="primary"
                 @click="editOrder(item)"
-                title="Edit"
+                title="Ubah"
               >
                 <VIcon icon="tabler-pencil" />
               </VBtn>
 
+              <VBtn
+                v-if="!item.deleted_at && item.status == 'pending'"
+                icon
+                size="small"
+                color="warning"
+                @click="processOrder(item)"
+                title="Proses"
+              >
+                <VIcon icon="tabler-progress-check" />
+              </VBtn>
+
+              <VBtn
+                v-if="!item.deleted_at && item.status == 'process'"
+                icon
+                size="small"
+                color="success"
+                @click="finishedOrder(item)"
+                title="Selesai"
+              >
+                <VIcon icon="tabler-thumb-up" />
+              </VBtn>
+
               <VBtn  
-                v-if="!item.deleted_at"
+                v-if="!item.deleted_at && item.status == 'pending'"
+                icon
+                size="small"
+                color="error"
+                @click="rejectOrder(item)"
+                title="Tolak"
+              >
+                <VIcon icon="tabler-x" />
+              </VBtn>
+
+              <VBtn  
+                v-if="!item.deleted_at && item.status != 'process'"
                 icon
                 size="small"
                 color="error"
                 @click="deleteOrder(item)"
-                title="Delete"
+                title="Hapus"
               >
                 <VIcon icon="tabler-trash" />
               </VBtn>
@@ -435,7 +553,7 @@ watch([searchQuery, selectedStatus, selectedSort], () => {
                 size="small"
                 color="success"
                 @click="activateOrder(item)"
-                title="Activate"
+                title="Aktifkan"
               >
                 <VIcon icon="tabler-check" />
               </VBtn>
