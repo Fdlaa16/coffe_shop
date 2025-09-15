@@ -88,3 +88,4 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::get('payment/methods', [PaymentController::class, 'getPaymentMethods']);
 Route::post('payment/create', [PaymentController::class, 'createPayment']);
 Route::post('payment/duitku/callback', [PaymentController::class, 'callback']);
+Route::post('/payment/success', [PaymentController::class, 'paymentSuccess'])->name('payment.success');

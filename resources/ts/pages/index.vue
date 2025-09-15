@@ -2,12 +2,12 @@
 
 import QRCode from 'qrcode'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 
-const router = useRouter()
-const currentStep = ref(0)
-const isPasswordVisible = ref(false)
-const isConfirmPasswordVisible = ref(false)
+const route = useRoute()
+const merchantOrderId = route.query.merchantOrderId as string
+const resultCode = route.query.resultCode as string
+const reference = route.query.reference as string
+
 
 const isFlatSnackbarVisible = ref(false)
 const snackbarMessage = ref('')
@@ -349,6 +349,7 @@ const handleResize = () => {
 }
 
 onMounted(() => {
+  updateTransaction()
   resetAllData()
   generateBarcode()
   loadPaymentMethods()
@@ -569,7 +570,8 @@ const paymentForm = ref({
   email: '',
   phone: '',
   amount: '',
-  product_details: ''
+  product_details: '',
+  item_details : []
 })
 
 watch(() => currentPage.value, (newPage) => {
@@ -586,6 +588,13 @@ watch(() => currentPage.value, (newPage) => {
     ).join(', ')
     
     paymentForm.value.product_details = `Pesanan: ${productDetails}. Total: ${localData.value.total_items} item(s)`
+
+     // Generate item details (ARRAY) - untuk duitku itemDetails
+     paymentForm.value.item_details = localData.value.cartItems.map(item => ({
+      name: item.name,
+      price: parseInt(item.price), // pastikan integer
+      quantity: parseInt(item.qty) // pastikan integer
+    }))
   }
 })
 
@@ -595,15 +604,15 @@ const selectedPaymentMethod = computed(() => {
   return paymentMethods.value.find(method => method.id === selectedPayment.value)
 })
 
-const isFormValidPayment = computed(() => {
-  const form = paymentForm.value
-  return form.customer_name && 
-         form.email && 
-         form.phone && 
-         form.amount && 
-         form.product_details &&
-         selectedPaymentOption.value
-})
+// const isFormValidPayment = computed(() => {
+//   const form = paymentForm.value
+//   return form.customer_name && 
+//          form.email && 
+//          form.phone && 
+//          form.amount && 
+//          form.product_details &&
+//          selectedPaymentOption.value
+// })
 
 // Methods
 const loadPaymentMethods = async () => {
@@ -617,7 +626,7 @@ const loadPaymentMethods = async () => {
     
     if (response.success) {
       paymentMethods.value = response.data.filter(
-        (method: any) => method.id === 'va' || method.id === 'retail'
+        (method: any) => method.id === 'va'
       )
     } else {
       error.value = response.message || 'Gagal memuat metode pembayaran'
@@ -650,14 +659,21 @@ const processPayment = async () => {
       payment_method: selectedPaymentOption.value.value
     }
 
+    console.log('paymentData', paymentData)
+ 
     const response = await $api('payment/create', {
       method: 'POST',
       body: paymentData
     })
-    console.log('res', response)
 
     if (response.success) {
-      window.location.href = response.data.payment_url
+      // Tampilkan pesan sukses sebentar sebelum redirect
+      // successMessage.value = 'Pembayaran berhasil dibuat! Mengalihkan ke halaman pembayaran...'
+      
+      // Delay sedikit untuk user experience yang lebih baik
+      setTimeout(() => {
+        window.location.href = response.data.payment_url
+      }, 200)
     } else {
       alert('Gagal membuat pembayaran: ' + (response.message ?? 'Terjadi kesalahan'))
     }
@@ -676,6 +692,32 @@ const formatCurrency = (amount) => {
     minimumFractionDigits: 0
   }).format(amount)
 }
+
+const apiError = ref<string | null>(null)
+const router = useRouter()
+
+const updateTransaction = async () => {
+  if (merchantOrderId) {
+    try {
+      await $api('payment/success', {
+        method: 'POST',
+        body: {
+          order_id: merchantOrderId,
+          result_code: resultCode,
+          reference,
+        },
+      })
+
+      //  Hapus query params dari URL
+      router.replace({ path: router.currentRoute.value.path, query: {} })
+    } catch (err: any) {
+      apiError.value = err.message || 'Failed to verify payment'
+    } finally {
+      loading.value = false
+    }
+  }
+}
+
 
 definePage({
   meta: {
@@ -1411,12 +1453,23 @@ definePage({
               <VCardText class="pa-4">
                 <h3 class="text-h6 font-weight-bold mb-3">Ringkasan Pesanan</h3>
                 
-                <div class="d-flex justify-space-between align-center mb-2">
+                <!-- <div class="d-flex justify-space-between align-center mb-2">
                   <span class="text-body-2">{{ cartItemsCount }} Item</span>
                   <span class="text-body-2">Rp{{ formatPrice(subtotal) }}</span>
+                </div> -->
+                <div v-for="(item, index) in localData.cartItems" :key="index" class="d-flex justify-space-between align-center py-1">
+                  <div class="flex-grow-1">
+                    <span class="text-body-2">{{ item.name }}</span>
+                    <span class="text-body-2 ms-2">
+                      ({{ item.qty }}x)
+                    </span>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-body-2">Rp{{ formatPrice(item.price * item.qty) }}</span>
+                  </div>
                 </div>
                 
-                <div class="d-flex justify-space-between align-center mb-2">
+                <div class="d-flex justify-space-between align-center mb-2 mt-2">
                   <span class="text-body-2">Pajak (10%)</span>
                   <span class="text-body-2">Rp{{ formatPrice(tax) }}</span>
                 </div>
@@ -1570,28 +1623,9 @@ definePage({
                           required
                         />
                       </VCol>
-                      <VCol cols="12">
-                        <VTextarea
-                          v-model="paymentForm.product_details"
-                          label="Detail Produk/Layanan"
-                          variant="outlined"
-                          rows="3"
-                          required
-                        />
-                      </VCol>
+                      <!-- Product Details Display - Compact Version -->
+                     
                     </VRow>
-                    
-                    <div class="d-flex justify-end mt-4">
-                      <VBtn
-                        color="primary"
-                        size="large"
-                        :loading="processing"
-                        @click="processPayment"
-                        :disabled="!isFormValidPayment"
-                      >
-                        Bayar Sekarang
-                      </VBtn>
-                    </div>
                   </VCardText>
                 </VCard>
 
@@ -1622,27 +1656,46 @@ definePage({
           </VContainer>
 
           <div 
-            class="payment-button-container position-fixed w-100"
-            style="bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1001;"
-          >
-            <VContainer class="pa-4">
-              <VBtn
-                color="primary"
-                block
-                size="large"
-                rounded="md"
-                elevation="0"
-                class="text-none font-weight-bold"
-                :disabled="!selectedPayment"
-                :loading="loading"
-                @click="processPayment"
-              >
-                <span v-if="!selectedPayment">Pilih Metode Pembayaran</span>
-                <span v-else>Bayar dengan {{ getPaymentMethodName(selectedPayment) }}</span>
-              </VBtn>
-            </VContainer>
-          </div>
-
+          class="payment-button-container position-fixed w-100"
+          style="bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1001;"
+        >
+          <VContainer class="pa-4">
+            <VBtn
+              color="primary"
+              block
+              size="large"
+              rounded="md"
+              elevation="0"
+              class="text-none font-weight-bold"
+              :disabled="!selectedPayment || processing"
+              :loading="processing"
+              @click="processPayment"
+            >
+              <template v-if="processing">
+                Memproses Pembayaran...
+              </template>
+              <template v-else-if="!selectedPayment">
+                Pilih Metode Pembayaran
+              </template>
+              <template v-else>
+                Bayar dengan {{ getPaymentMethodName(selectedPayment) }}
+              </template>
+            </VBtn>
+            
+            <!-- Optional: Progress indicator -->
+            <div v-if="processing" class="text-center mt-2">
+              <VProgressLinear 
+                indeterminate 
+                color="primary" 
+                height="2"
+                rounded
+              />
+              <div class="text-caption text-medium-emphasis mt-1">
+                Jangan tutup halaman ini...
+              </div>
+            </div>
+          </VContainer>
+        </div>
           <div style="height: 100px;"></div>
         </div>
       </div>

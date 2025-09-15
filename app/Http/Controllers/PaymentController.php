@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\DuitkuService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -50,9 +51,9 @@ class PaymentController extends Controller
             'amount' => 'required|numeric|min:1000',
             'payment_method' => 'required|string',
             'customer_name' => 'required|string|max:100',
-            'email' => 'required|email|max:100',
-            'phone' => 'required|string|max:15',
-            'product_details' => 'required|string|max:255'
+            'email' => 'nullable|email|max:100',
+            'phone' => 'nullable|string|max:15',
+            'product_details' => 'required|string|'
         ]);
 
         $orderId = 'ORDER-' . time() . '-' . Str::random(6);
@@ -66,7 +67,7 @@ class PaymentController extends Controller
             'phone' => $request->phone,
             'product_details' => $request->product_details,
             'callback_url' => url('/api/duitku/callback'),
-            'return_url' => url('/payment/success'),
+            'return_url' => url(''),
             'expiry_period' => 1440 // 24 hours
         ];
 
@@ -76,7 +77,7 @@ class PaymentController extends Controller
             $data = $response['data'];
 
             $this->saveTransactionLog($orderId, $request->all(), $data);
-
+            $this->saveCustomerInfo($request->only(['customer_name', 'email', 'phone']));
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -141,13 +142,38 @@ class PaymentController extends Controller
      */
     public function paymentSuccess(Request $request)
     {
-        $reference = $request->get('reference');
-        $merchantOrderId = $request->get('merchantOrderId');
-
-        return view('payment.success', [
-            'reference' => $reference,
-            'order_id' => $merchantOrderId
+        $merchantOrderId = $request->order_id;
+        $resultCode = $request->result_code;
+        $reference = $request->reference;
+        Log::info('Payment Success Return:', [
+            'merchantOrderId' => $merchantOrderId,
+            'resultCode' => $resultCode,
+            'reference' => $reference
         ]);
+        
+        // Verify payment status (optional tapi recommended)
+        if ($resultCode === '00') {
+            // Payment successful
+            $message = 'Pembayaran berhasil!';
+            $status = 'success';
+            
+            // Update order status di database jika perlu
+            // Order::where('order_id', $merchantOrderId)->update(['status' => 'paid']);
+            DB::table('payment_transactions')
+                ->where('order_id', $merchantOrderId)
+                ->update(['status' => 'paid', 'paid_at' => now()]);
+            
+        } else {
+            // Payment failed or pending
+            $message = 'Pembayaran gagal atau tertunda.';
+            $status = 'failed';
+        }
+        
+        // Redirect ke home dengan parameter
+        return;
+        
+        // Atau jika ingin tampilkan halaman success dulu:
+        // return view('payment.success', compact('message', 'status', 'merchantOrderId', 'reference'));
     }
 
     /**
@@ -174,7 +200,7 @@ class PaymentController extends Controller
     {
         // Implement database save logic here
         // Example:
-        /*
+      
         DB::table('payment_transactions')->insert([
             'order_id' => $orderId,
             'reference' => $duitkuResponse['reference'],
@@ -184,12 +210,30 @@ class PaymentController extends Controller
             'email' => $requestData['email'],
             'phone' => $requestData['phone'],
             'product_details' => $requestData['product_details'],
+            'item_details' => $requestData['item_details'] ? json_encode($requestData['item_details']) : null,
             'status' => 'pending',
             'duitku_response' => json_encode($duitkuResponse),
             'created_at' => now(),
             'updated_at' => now()
         ]);
-        */
+    }
+
+    /**
+     * Save customer info to database (optional)
+     */
+
+    private function saveCustomerInfo($customerData)
+    {
+        // Implement database save logic here
+        // Example:
+        DB::table('customers')->updateOrInsert(
+            ['phone' => $customerData['phone']],
+            [
+                'name' => $customerData['customer_name'],
+                'phone' => $customerData['phone'],
+                'updated_at' => now()
+            ]
+        );
     }
 
     /**

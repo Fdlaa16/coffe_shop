@@ -4,11 +4,24 @@ import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
 
 export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]: any }>) => {
   router.beforeEach(async (to) => {
+    console.log('>>> to:', to)
+    console.log('>>> Navigating to:', to.fullPath)
+    console.log('>>> Route name:', to.name)
+    console.log('>>> Route meta:', to.meta)
+  
+    if (to.meta.public) {
+      console.log('>>> Public route detected, skip auth check!')
+      return true
+    }
+  
     const authStore = useAuthStore()
+    await authStore.checkSessionTimeout()
+    console.log('>>> After checkSessionTimeout')
+  
+
     const { isLoggedIn } = storeToRefs(authStore)
     const role = authStore.role
 
-    await authStore.checkSessionTimeout()
 
     const authPages = ['authentication-login', 'authentication-register']
 
@@ -22,8 +35,6 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
       return undefined
     }
 
-    // Halaman public boleh diakses semua
-    if (to.meta.public) return undefined
 
     // Semua route dashboard + profile hanya untuk admin
     const adminRoutes = [

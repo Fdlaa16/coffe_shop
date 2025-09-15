@@ -101,6 +101,11 @@ class DuitkuService
             'expiryPeriod' => $data['expiry_period'] ?? 1440 // 24 hours default
         ];
 
+                // Tambahkan itemDetails jika ada
+        if (isset($data['item_details']) && is_array($data['item_details'])) {
+            $params['itemDetails'] = $data['item_details'];
+        }
+
         Log::info('DUITKU Create Transaction Request:', $params);
 
         try {

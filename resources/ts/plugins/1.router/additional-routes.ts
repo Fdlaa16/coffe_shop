@@ -58,4 +58,10 @@ export const routes: RouteRecordRaw[] = [
     name: 'apps-ecommerce-dashboard',
     component: () => import('@/pages/dashboards/ecommerce.vue'),
   },
+  {
+    path: '/payment/success',
+    redirect: () => ({ name: ''}),
+    meta: { public: true, layout: 'blank' },
+  }
+  
 ]
