@@ -84,7 +84,7 @@ class DuitkuService
 
         // Signature format for transaction: merchantCode + merchantOrderId + amount + apiKey
         $signatureString = $this->merchantCode . $data['order_id'] . $data['amount'] . $this->apiKey;
-        $signature = hash('sha256', $signatureString);
+        $signature = md5($signatureString);
 
         $params = [
             'merchantCode' => $this->merchantCode,

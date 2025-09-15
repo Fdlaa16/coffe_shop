@@ -1,6 +1,5 @@
 <script setup lang="ts">
 
-import axios from 'axios'
 import QRCode from 'qrcode'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -99,6 +98,8 @@ const resetAllData = () => {
     phone: '',
     order_type: 'takeaway',
     cartItems: [],
+    selectedPayment: '',
+    selectedPaymentOption: '',
     method: '',
     method_name: '',
     option: '',
@@ -194,15 +195,69 @@ const decreaseQty = (productId) => {
   }
 }
 
-// const processPayment = () => {
-//   if (selectedPayment.value) {
-//     setTimeout(() => {
-//       currentPage.value = 'success'
-//     }, 1000)
+// const processPayment = async () => {
+//   try {
+//     loading.value = true
+    
+//     updateCalculatedValues()
+
+//     const formData = new FormData()
+    
+//     formData.append('name', localData.value.name)
+//     formData.append('phone', localData.value.phone)
+//     formData.append('email', localData.value.email)
+    
+//     formData.append('order_type', localData.value.order_type)
+  
+//     localData.value.cartItems.forEach((item, index) => {
+//       formData.append(`cartItems[${index}][menu_id]`, item.menu_id.toString())
+//       formData.append(`cartItems[${index}][menu_name]`, item.menu_name)
+//       formData.append(`cartItems[${index}][qty]`, item.qty.toString())
+//       formData.append(`cartItems[${index}][price]`, item.price.toString())
+//       formData.append(`cartItems[${index}][subtotal]`, item.subtotal.toString())
+//       formData.append(`cartItems[${index}][notes]`, item.notes)
+//       formData.append(`cartItems[${index}][size]`, item.size)
+//       formData.append(`cartItems[${index}][sugar_level]`, item.sugar_level)
+//       formData.append(`cartItems[${index}][category]`, item.category)
+//     })
+
+//     formData.append('method', localData.value.method)
+//     formData.append('method_name', localData.value.method_name)
+//     formData.append('option', localData.value.option)
+    
+//     formData.append('total_items', localData.value.total_items.toString())
+//     formData.append('subtotal', localData.value.subtotal.toString())
+//     formData.append('tax', localData.value.tax.toString())
+//     formData.append('total_payment', localData.value.total_payment.toString())
+    
+//     await $api('order/create', {
+//       method: 'POST',
+//       body: formData,
+//     })
+
+//     await new Promise(resolve => setTimeout(resolve, 500))
+    
+//     currentPage.value = 'success'
+    
+//   } catch (err: any) {
+//     loading.value = false 
+    
+//     const errors = err?.data?.errors
+//     if (err?.status === 422 && errors) {
+//       const messages = Object.values(errors).flat()
+//       snackbarMessage.value = 'Validasi gagal: ' + messages.join(', ')
+//     } else {
+//       snackbarMessage.value =
+//         'Gagal mengirim data: ' + (err?.data?.message || err?.message || 'Unknown error')
+//     }
+
+//     snackbarColor.value = 'error'
+//     isFlatSnackbarVisible.value = true
+//   } finally {
+//     loading.value = false 
 //   }
 // }
 
-// // Payment methods
 // const paymentMethods = ref([
 //   { id: 'qris', name: 'QRIS', icon: 'tabler-qrcode', info: 'Pembayaran QRIS ke PT. Contoh QRIS' },
 //   {
@@ -219,104 +274,23 @@ const decreaseQty = (productId) => {
 //   }
 // ])
 
-// const selectedPayment = ref('')
-// const selectedPaymentOption = ref('')
-const processPayment = async () => {
-  try {
-    loading.value = true
-    
-    updateCalculatedValues()
+// const selectedPayment = computed({
+//   get: () => localData.value.method,
+//   set: (value) => {
+//     localData.value.method = value
+//     localData.value.method_name = getPaymentMethodName(value)
+//     if (!value) {
+//       localData.value.option = ''
+//     }
+//   }
+// })
 
-    const formData = new FormData()
-    
-    formData.append('name', localData.value.name)
-    formData.append('phone', localData.value.phone)
-    formData.append('email', localData.value.email)
-    
-    formData.append('order_type', localData.value.order_type)
-  
-    localData.value.cartItems.forEach((item, index) => {
-      formData.append(`cartItems[${index}][menu_id]`, item.menu_id.toString())
-      formData.append(`cartItems[${index}][menu_name]`, item.menu_name)
-      formData.append(`cartItems[${index}][qty]`, item.qty.toString())
-      formData.append(`cartItems[${index}][price]`, item.price.toString())
-      formData.append(`cartItems[${index}][subtotal]`, item.subtotal.toString())
-      formData.append(`cartItems[${index}][notes]`, item.notes)
-      formData.append(`cartItems[${index}][size]`, item.size)
-      formData.append(`cartItems[${index}][sugar_level]`, item.sugar_level)
-      formData.append(`cartItems[${index}][category]`, item.category)
-    })
-
-    formData.append('method', localData.value.method)
-    formData.append('method_name', localData.value.method_name)
-    formData.append('option', localData.value.option)
-    
-    formData.append('total_items', localData.value.total_items.toString())
-    formData.append('subtotal', localData.value.subtotal.toString())
-    formData.append('tax', localData.value.tax.toString())
-    formData.append('total_payment', localData.value.total_payment.toString())
-    
-    await $api('order/create', {
-      method: 'POST',
-      body: formData,
-    })
-
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    currentPage.value = 'success'
-    
-  } catch (err: any) {
-    loading.value = false 
-    
-    const errors = err?.data?.errors
-    if (err?.status === 422 && errors) {
-      const messages = Object.values(errors).flat()
-      snackbarMessage.value = 'Validasi gagal: ' + messages.join(', ')
-    } else {
-      snackbarMessage.value =
-        'Gagal mengirim data: ' + (err?.data?.message || err?.message || 'Unknown error')
-    }
-
-    snackbarColor.value = 'error'
-    isFlatSnackbarVisible.value = true
-  } finally {
-    loading.value = false 
-  }
-}
-
-const paymentMethods = ref([
-  { id: 'qris', name: 'QRIS', icon: 'tabler-qrcode', info: 'Pembayaran QRIS ke PT. Contoh QRIS' },
-  {
-    id: 'card',
-    name: 'Card',
-    icon: 'tabler-credit-card',
-    options: ['BCA Virtual Account', 'BRI Virtual Account', 'Mandiri Virtual Account']
-  },
-  {
-    id: 'ewallet',
-    name: 'E-Wallet',
-    icon: 'tabler-wallet',
-    options: ['OVO', 'DANA', 'ShopeePay', 'GoPay']
-  }
-])
-
-const selectedPayment = computed({
-  get: () => localData.value.method,
-  set: (value) => {
-    localData.value.method = value
-    localData.value.method_name = getPaymentMethodName(value)
-    if (!value) {
-      localData.value.option = ''
-    }
-  }
-})
-
-const selectedPaymentOption = computed({
-  get: () => localData.value.option,
-  set: (value) => {
-    localData.value.option = value
-  }
-})
+// const selectedPaymentOption = computed({
+//   get: () => localData.value.option,
+//   set: (value) => {
+//     localData.value.option = value
+//   }
+// })
 
 const getPaymentMethodName = (methodId) => {
   const method = paymentMethods.value.find(m => m.id === methodId)
@@ -377,6 +351,7 @@ const handleResize = () => {
 onMounted(() => {
   resetAllData()
   generateBarcode()
+  loadPaymentMethods()
   window.addEventListener('resize', handleResize)
 })
 
@@ -583,18 +558,6 @@ const filteredProducts = computed(() => {
   return filtered
 })
 
-definePage({
-  meta: {
-    layout: 'blank',
-    public: true,
-  },
-})
-
-//Baru 13-09-25
-
-
-// Reactive data
-const loading = ref(true)
 const processing = ref(false)
 const error = ref('')
 const paymentMethods = ref([])
@@ -608,6 +571,24 @@ const paymentForm = ref({
   amount: '',
   product_details: ''
 })
+
+watch(() => currentPage.value, (newPage) => {
+  if (newPage === 'payment') {
+    // Auto-fill payment form with existing data
+    paymentForm.value.customer_name = localData.value.name
+    paymentForm.value.email = localData.value.email
+    paymentForm.value.phone = localData.value.phone
+    paymentForm.value.amount = localData.value.total_payment.toString()
+    
+    // Generate product details from cart items
+    const productDetails = localData.value.cartItems.map(item => 
+      `${item.name} (${item.qty}x) - Rp${formatPrice(item.price)}`
+    ).join(', ')
+    
+    paymentForm.value.product_details = `Pesanan: ${productDetails}. Total: ${localData.value.total_items} item(s)`
+  }
+})
+
 
 // Computed
 const selectedPaymentMethod = computed(() => {
@@ -630,12 +611,16 @@ const loadPaymentMethods = async () => {
     loading.value = true
     error.value = ''
     
-    const response = await axios.get('/api/payment/methods')
+    const response = await $api('payment/methods', {
+      method: 'GET'
+    })
     
-    if (response.data.success) {
-      paymentMethods.value = response.data.data
+    if (response.success) {
+      paymentMethods.value = response.data.filter(
+        (method: any) => method.id === 'va' || method.id === 'retail'
+      )
     } else {
-      error.value = response.data.message || 'Gagal memuat metode pembayaran'
+      error.value = response.message || 'Gagal memuat metode pembayaran'
     }
   } catch (err) {
     console.error('Error loading payment methods:', err)
@@ -659,19 +644,22 @@ const selectPaymentMethod = (methodId) => {
 const processPayment = async () => {
   try {
     processing.value = true
-    
+
     const paymentData = {
       ...paymentForm.value,
       payment_method: selectedPaymentOption.value.value
     }
-    
-    const response = await axios.post('/api/payment/create', paymentData)
-    
-    if (response.data.success) {
-      // Redirect to payment page
-      window.location.href = response.data.data.payment_url
+
+    const response = await $api('payment/create', {
+      method: 'POST',
+      body: paymentData
+    })
+    console.log('res', response)
+
+    if (response.success) {
+      window.location.href = response.data.payment_url
     } else {
-      alert('Gagal membuat pembayaran: ' + response.data.message)
+      alert('Gagal membuat pembayaran: ' + (response.message ?? 'Terjadi kesalahan'))
     }
   } catch (err) {
     console.error('Error processing payment:', err)
@@ -689,9 +677,11 @@ const formatCurrency = (amount) => {
   }).format(amount)
 }
 
-// Lifecycle
-onMounted(() => {
-  loadPaymentMethods()
+definePage({
+  meta: {
+    layout: 'blank',
+    public: true,
+  },
 })
 </script>
 
@@ -1166,172 +1156,138 @@ onMounted(() => {
         </div>
       </div>
 
-  <VCard class="mb-4" elevation="2" rounded="md">
-    <VCardText class="pa-4">
-      <h3 class="text-h6 font-weight-bold mb-4">Metode Pembayaran</h3>
-      
-      <!-- Loading state -->
-      <div v-if="loading" class="text-center py-4">
-        <VProgressCircular indeterminate color="primary" />
-        <p class="mt-2">Memuat metode pembayaran...</p>
-      </div>
-      
-      <!-- Payment methods grid -->
-      <VRow v-else-if="paymentMethods.length">
-        <VCol 
-          v-for="method in paymentMethods" 
-          :key="method.id"
-          cols="6"
-          sm="4"
-          class="mb-3"
-        >
-          <VCard
-            :color="selectedPayment === method.id ? 'primary' : 'default'"
-            :variant="selectedPayment === method.id ? 'flat' : 'outlined'"
-            rounded="lg"
-            class="payment-method-card text-center pa-4 cursor-pointer"
-            elevation="0"
-            @click="selectPaymentMethod(method.id)"
-          >
-            <VIcon 
-              :icon="method.icon" 
-              size="32"
-              :color="selectedPayment === method.id ? 'white' : 'grey-darken-2'"
-              class="mb-2"
-            />
-            <p 
-              class="text-body-2 font-weight-medium mb-0"
-              :class="selectedPayment === method.id ? 'text-white' : 'text-grey-darken-2'"
-            >
-              {{ method.name }}
-            </p>
-          </VCard>
-        </VCol>
-      </VRow>
-
-      <!-- Error state -->
-      <VAlert v-else-if="error" type="error" class="mb-4">
-        {{ error }}
-      </VAlert>
-
-      <!-- Payment options dropdown -->
-      <VRow v-if="selectedPaymentMethod && selectedPaymentMethod.options?.length > 1">
-        <VCol cols="12">
-          <VSelect
-            v-model="selectedPaymentOption"
-            :items="selectedPaymentMethod.options"
-            :label="`Pilih ${selectedPaymentMethod.name}`"
-            variant="outlined"
-            item-title="title"
-            item-value="value"
-            return-object
-          >
-            <template #item="{ props, item }">
-              <VListItem v-bind="props">
-                <template #append>
-                  <VChip size="small" color="info" v-if="item.raw.fee > 0">
-                    +{{ formatCurrency(item.raw.fee) }}
-                  </VChip>
-                  <VChip size="small" color="success" v-else>
-                    Gratis
-                  </VChip>
-                </template>
-              </VListItem>
-            </template>
-          </VSelect>
-        </VCol>
-      </VRow>
-
-      <!-- Selected payment info -->
-      <VAlert
-        v-if="selectedPaymentOption"
-        type="success"
-        border="start"
-        color="green"
-        elevation="1"
-        class="mt-4"
+      <div
+        v-if="currentPage === 'cart'"
+        class="products-container"
+        :style="{
+          width: isDesktop ? 'calc(100vw - ' + sidebarWidth + ')' : '100vw',
+          maxWidth: '100%',
+          padding: isMobile ? '12px' : '24px',
+          boxSizing: 'border-box',
+          margin: '0 auto',
+          transition: 'width 0.3s ease'
+        }"
       >
-        <div class="d-flex justify-space-between align-center">
-          <div>
-            <strong>{{ selectedPaymentOption.title }}</strong>
-            <br>
-            <small class="text-grey-darken-1">{{ selectedPaymentMethod.name }}</small>
-          </div>
-          <div v-if="selectedPaymentOption.fee > 0" class="text-right">
-            <div class="text-caption text-grey-darken-1">Biaya Admin</div>
-            <div class="font-weight-bold">{{ formatCurrency(selectedPaymentOption.fee) }}</div>
-          </div>
-        </div>
-      </VAlert>
-
-      <!-- Payment form -->
-      <VCard v-if="selectedPaymentOption" class="mt-4" variant="outlined">
-        <VCardTitle class="text-h6">Informasi Pembayaran</VCardTitle>
-        <VCardText>
-          <VRow>
-            <VCol cols="12" md="6">
-              <VTextField
-                v-model="paymentForm.customer_name"
-                label="Nama Lengkap"
-                variant="outlined"
-                required
-              />
-            </VCol>
-            <VCol cols="12" md="6">
-              <VTextField
-                v-model="paymentForm.email"
-                label="Email"
-                type="email"
-                variant="outlined"
-                required
-              />
-            </VCol>
-            <VCol cols="12" md="6">
-              <VTextField
-                v-model="paymentForm.phone"
-                label="Nomor Telepon"
-                variant="outlined"
-                required
-              />
-            </VCol>
-            <VCol cols="12" md="6">
-              <VTextField
-                v-model="paymentForm.amount"
-                label="Jumlah Pembayaran"
-                type="number"
-                variant="outlined"
-                prefix="Rp"
-                required
-              />
-            </VCol>
-            <VCol cols="12">
-              <VTextarea
-                v-model="paymentForm.product_details"
-                label="Detail Produk/Layanan"
-                variant="outlined"
-                rows="3"
-                required
-              />
-            </VCol>
-          </VRow>
+        <VAppBar
+          color="white"
+          elevation="1"
+          class="px-4"
+          style="z-index: 1002;"
+          fixed
+        >
+          <VBtn
+            icon="tabler-arrow-left"
+            variant="text"
+            @click="currentPage = 'catalog'"
+          />
           
-          <div class="d-flex justify-end mt-4">
-            <VBtn
-              color="primary"
-              size="large"
-              :loading="processing"
-              @click="processPayment"
-              :disabled="!isFormValidPayment"
-            >
-              Bayar Sekarang
-            </VBtn>
-          </div>
-        </VCardText>
-      </VCard>
+          <VAppBarTitle class="font-weight-bold">
+            Detail Pesanan
+          </VAppBarTitle>
+          
+          <VSpacer />
+        </VAppBar>
 
-    </VCardText>
-  </VCard>
+        <div style="padding-top: 64px;">
+          <VContainer class="pa-4">
+            <VCard class="mb-4" elevation="2" rounded="md">
+              <VCardText class="pa-4">
+                <div class="d-flex justify-space-between align-center mb-4">
+                  <h3 class="text-h6 font-weight-bold">Daftar Pesanan</h3>
+                  <VBtn
+                    color="primary"
+                    variant="outlined"
+                    size="small"
+                    rounded="pill"
+                    @click="currentPage = 'catalog'"
+                    class="text-none"
+                  >
+                    <VIcon 
+                      icon="tabler-plus" 
+                      start 
+                      size="16"
+                    />
+                    Tambah Menu
+                  </VBtn>
+                </div>
 
+                <div v-if="localData.cartItems.length > 0">
+                  <div
+                    v-for="(item, index) in localData.cartItems"
+                    :key="item.id"
+                    class="cart-item mb-4"
+                  >
+                    <VRow align="center">
+                      <VCol cols="3" class="pa-2">
+                        <div 
+                          class="product-image bg-grey-lighten-3 rounded-lg d-flex align-center justify-center mx-auto"
+                          style="width: 60px; height: 60px;"
+                        >
+                          <VIcon 
+                            :icon="getProductIcon(item.category)" 
+                            size="24"
+                            color="grey-darken-1"
+                          />
+                        </div>
+                      </VCol>
+                      
+                      <VCol cols="5" class="pa-2">
+                        <div>
+                          <h4 class="text-body-1 font-weight-bold mb-1">
+                            {{ item.name }}
+                          </h4>
+                          <p class="text-body-2 text-grey-darken-1 mb-0">
+                            {{ item.size || 'Regular' }} Size
+                          </p>
+                        </div>
+                      </VCol>
+                      
+                      <VCol cols="4" class="pa-2">
+                        <div class="text-right">
+                          <p class="text-body-1 font-weight-bold mb-2">
+                            Rp{{ formatPrice(item.price) }}
+                          </p>
+                          
+                          <div class="d-flex align-center justify-end">
+                            <VBtn
+                              icon="tabler-trash"
+                              variant="text"
+                              size="x-small"
+                              color="primary"
+                              class="mr-2"
+                              @click="removeFromCart(item.id)"
+                            />
+                            
+                            <VBtn
+                              icon="tabler-minus"
+                              variant="outlined"
+                              size="x-small"
+                              color="grey-darken-2"
+                              @click="decreaseQty(item.id)"
+                              :disabled="item.qty <= 1"
+                              style="min-width: 24px; width: 24px; height: 24px;"
+                            />
+                            
+                            <span class="mx-2 text-body-1 font-weight-bold" style="min-width: 20px; text-align: center;">
+                              {{ item.qty }}
+                            </span>
+                            
+                            <VBtn
+                              icon="tabler-plus"
+                              variant="flat"
+                              size="x-small"
+                              color="primary"
+                              @click="increaseQty(item.id)"
+                              style="min-width: 24px; width: 24px; height: 24px;"
+                            />
+                          </div>
+                        </div>
+                      </VCol>
+                    </VRow>
+                    
+                    <VDivider v-if="index < localData.cartItems.length - 1" class="mt-3" />
+                  </div>
+                </div>
 
                 <div v-else class="text-center py-8">
                   <VIcon 
@@ -1480,11 +1436,19 @@ onMounted(() => {
               <VCardText class="pa-4">
                 <h3 class="text-h6 font-weight-bold mb-4">Metode Pembayaran</h3>
                 
-                <VRow>
+                <!-- Loading state -->
+                <div v-if="loading" class="text-center py-4">
+                  <VProgressCircular indeterminate color="primary" />
+                  <p class="mt-2">Memuat metode pembayaran...</p>
+                </div>
+                
+                <!-- Payment methods grid -->
+                <VRow v-else-if="paymentMethods.length">
                   <VCol 
                     v-for="method in paymentMethods" 
                     :key="method.id"
                     cols="6"
+                    sm="6"
                     class="mb-3"
                   >
                     <VCard
@@ -1493,7 +1457,7 @@ onMounted(() => {
                       rounded="lg"
                       class="payment-method-card text-center pa-4 cursor-pointer"
                       elevation="0"
-                      @click="selectedPayment = method.id"
+                      @click="selectPaymentMethod(method.id)"
                     >
                       <VIcon 
                         :icon="method.icon" 
@@ -1511,36 +1475,40 @@ onMounted(() => {
                   </VCol>
                 </VRow>
 
-                <VRow v-if="selectedPayment === 'qris'">
-                  <VCol cols="12">
-                    <VAlert type="info" border="start" color="primary" elevation="1">
-                      {{ paymentMethods.find(m => m.id === 'qris')?.info }}
-                    </VAlert>
-                  </VCol>
-                </VRow>
+                <!-- Error state -->
+                <VAlert v-else-if="error" type="error" class="mb-4">
+                  {{ error }}
+                </VAlert>
 
-                <VRow v-if="selectedPayment === 'card'">
+                <!-- Payment options dropdown -->
+                <VRow v-if="selectedPaymentMethod && selectedPaymentMethod.options?.length > 1">
                   <VCol cols="12">
                     <VSelect
                       v-model="selectedPaymentOption"
-                      :items="paymentMethods.find(m => m.id === 'card')?.options"
-                      label="Pilih Virtual Account"
+                      :items="selectedPaymentMethod.options"
+                      :label="`Pilih ${selectedPaymentMethod.name}`"
                       variant="outlined"
-                    />
+                      item-title="title"
+                      item-value="value"
+                      return-object
+                    >
+                      <template #item="{ props, item }">
+                        <VListItem v-bind="props">
+                          <template #append>
+                            <VChip size="small" color="info" v-if="item.raw.fee > 0">
+                              +{{ formatCurrency(item.raw.fee) }}
+                            </VChip>
+                            <VChip size="small" color="success" v-else>
+                              Gratis
+                            </VChip>
+                          </template>
+                        </VListItem>
+                      </template>
+                    </VSelect>
                   </VCol>
                 </VRow>
 
-                <VRow v-if="selectedPayment === 'ewallet'">
-                  <VCol cols="12">
-                    <VSelect
-                      v-model="selectedPaymentOption"
-                      :items="paymentMethods.find(m => m.id === 'ewallet')?.options"
-                      label="Pilih E-Wallet"
-                      variant="outlined"
-                    />
-                  </VCol>
-                </VRow>
-
+                <!-- Selected payment info -->
                 <VAlert
                   v-if="selectedPaymentOption"
                   type="success"
@@ -1549,11 +1517,87 @@ onMounted(() => {
                   elevation="1"
                   class="mt-4"
                 >
-                  Pembayaran melalui: <strong>{{ selectedPaymentOption }}</strong>
+                  <div class="d-flex justify-space-between align-center">
+                    <div>
+                      <strong>{{ selectedPaymentOption.title }}</strong>
+                      <br>
+                      <small class="text-grey-darken-1">{{ selectedPaymentMethod.name }}</small>
+                    </div>
+                    <div v-if="selectedPaymentOption.fee > 0" class="text-right">
+                      <div class="text-caption text-grey-darken-1">Biaya Admin</div>
+                      <div class="font-weight-bold">{{ formatCurrency(selectedPaymentOption.fee) }}</div>
+                    </div>
+                  </div>
                 </VAlert>
+
+                <!-- Payment form -->
+                <VCard v-if="selectedPaymentOption" class="mt-4" variant="outlined">
+                  <VCardTitle class="text-h6">Informasi Pembayaran</VCardTitle>
+                  <VCardText>
+                    <VRow>
+                      <VCol cols="12" md="6">
+                        <VTextField
+                          v-model="paymentForm.customer_name"
+                          label="Nama Lengkap"
+                          variant="outlined"
+                          required
+                        />
+                      </VCol>
+                      <VCol cols="12" md="6">
+                        <VTextField
+                          v-model="paymentForm.email"
+                          label="Email"
+                          type="email"
+                          variant="outlined"
+                          required
+                        />
+                      </VCol>
+                      <VCol cols="12" md="6">
+                        <VTextField
+                          v-model="paymentForm.phone"
+                          label="Nomor Telepon"
+                          variant="outlined"
+                          required
+                        />
+                      </VCol>
+                      <VCol cols="12" md="6">
+                        <VTextField
+                          v-model="paymentForm.amount"
+                          label="Jumlah Pembayaran"
+                          type="number"
+                          variant="outlined"
+                          prefix="Rp"
+                          required
+                        />
+                      </VCol>
+                      <VCol cols="12">
+                        <VTextarea
+                          v-model="paymentForm.product_details"
+                          label="Detail Produk/Layanan"
+                          variant="outlined"
+                          rows="3"
+                          required
+                        />
+                      </VCol>
+                    </VRow>
+                    
+                    <div class="d-flex justify-end mt-4">
+                      <VBtn
+                        color="primary"
+                        size="large"
+                        :loading="processing"
+                        @click="processPayment"
+                        :disabled="!isFormValidPayment"
+                      >
+                        Bayar Sekarang
+                      </VBtn>
+                    </div>
+                  </VCardText>
+                </VCard>
 
               </VCardText>
             </VCard>
+
 
             <VCard class="mb-4" elevation="2" rounded="md">
               <VCardText class="pa-4">
@@ -1717,13 +1761,6 @@ onMounted(() => {
   </VContainer>
 </template>
 
-
-<script setup>
-
-
-</script>
-
-
 <style scoped>
 
 .payment-method-card {
@@ -1818,4 +1855,3 @@ onMounted(() => {
   border-color: var(--v-primary-base) !important;
 }
 </style>
-

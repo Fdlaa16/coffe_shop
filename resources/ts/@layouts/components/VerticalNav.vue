@@ -84,7 +84,7 @@ const hideTitleAndIcon = configStore.isVerticalNavMini(isHovered)
           <Transition name="vertical-nav-app-title">
             <div v-show="!hideTitleAndIcon" class="d-flex flex-column align-start">
               <h5 class="ma-0">PAPASANS</h5>
-              <h5 class="ma-0">COFFE SHOP</h5>
+              <h5 class="ma-0">COFFEE SHOP</h5>
             </div>
           </Transition>
         </RouterLink>

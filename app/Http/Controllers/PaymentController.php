@@ -26,12 +26,12 @@ class PaymentController extends Controller
         $response = $this->duitkuService->getPaymentMethods($amount);
 
         if ($response['success']) {
-            // Transform data untuk Vue component
             $transformedMethods = $this->duitkuService->transformPaymentMethods($response['data']);
+            $filtered = collect($transformedMethods)->whereIn('id', ['va', 'retail'])->values();
 
             return response()->json([
                 'success' => true,
-                'data' => $transformedMethods
+                'data' => $filtered
             ]);
         }
 
@@ -47,7 +47,7 @@ class PaymentController extends Controller
     public function createPayment(Request $request)
     {
         $request->validate([
-            'amount' => 'required|numeric|min:1000', // Minimal Rp 1.000
+            'amount' => 'required|numeric|min:1000',
             'payment_method' => 'required|string',
             'customer_name' => 'required|string|max:100',
             'email' => 'required|email|max:100',
@@ -75,7 +75,6 @@ class PaymentController extends Controller
         if ($response['success']) {
             $data = $response['data'];
 
-            // Optional: Save transaction to database
             $this->saveTransactionLog($orderId, $request->all(), $data);
 
             return response()->json([

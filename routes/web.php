@@ -5,3 +5,6 @@ use Illuminate\Support\Facades\Route;
 Route::get('{any}', function () {
     return view('application');
 })->where('any', '^(?!api|storage).*$');
+
+
+Route::get('login')->name('login');

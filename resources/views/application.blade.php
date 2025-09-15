@@ -3,9 +3,9 @@
 
 <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="{{ asset('images/logo/papasans.png') }}" />
+    <link rel="icon" type="image/png" href="{{ asset('images/logo/papasans.png') }}" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Papasans</title>
+    <title>PAPASANS</title>
     <link rel="stylesheet" type="text/css" href="{{ asset('loader.css') }}" />
     @vite(['resources/ts/main.ts'])
 </head>

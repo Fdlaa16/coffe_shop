@@ -3,31 +3,23 @@ import { useGenerateImageVariant } from '@core/composable/useGenerateImageVarian
 import { VNodeRenderer } from '@layouts/components/VNodeRenderer'
 import { themeConfig } from '@themeConfig'
 
-import authV2ResetPasswordIllustrationDark from '@images/pages/auth-v2-reset-password-illustration-dark.png'
-import authV2ResetPasswordIllustrationLight from '@images/pages/auth-v2-reset-password-illustration-light.png'
+import authV2ForgotPasswordIllustrationDark from '@images/pages/auth-v2-forgot-password-illustration-dark.png'
+import authV2ForgotPasswordIllustrationLight from '@images/pages/auth-v2-forgot-password-illustration-light.png'
 import authV2MaskDark from '@images/pages/misc-mask-dark.png'
 import authV2MaskLight from '@images/pages/misc-mask-light.png'
+
+const email = ref('')
+
+const authThemeImg = useGenerateImageVariant(authV2ForgotPasswordIllustrationLight, authV2ForgotPasswordIllustrationDark)
+
+const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark)
 
 definePage({
   meta: {
     layout: 'blank',
-    public: true,
+    unauthenticatedOnly: true,
   },
 })
-
-const form = ref({
-  newPassword: '',
-  confirmPassword: '',
-})
-
-const authThemeImg = useGenerateImageVariant(authV2ResetPasswordIllustrationLight,
-  authV2ResetPasswordIllustrationDark,
-)
-
-const authThemeMask = useGenerateImageVariant(authV2MaskLight, authV2MaskDark)
-
-const isPasswordVisible = ref(false)
-const isConfirmPasswordVisible = ref(false)
 </script>
 
 <template>
@@ -41,8 +33,8 @@ const isConfirmPasswordVisible = ref(false)
   </RouterLink>
 
   <VRow
-    no-gutters
     class="auth-wrapper bg-surface"
+    no-gutters
   >
     <VCol
       md="8"
@@ -54,14 +46,14 @@ const isConfirmPasswordVisible = ref(false)
           style="padding-inline: 150px;"
         >
           <VImg
-            max-width="451"
+            max-width="468"
             :src="authThemeImg"
             class="auth-illustration mt-16 mb-2"
           />
         </div>
 
         <img
-          class="auth-footer-mask flip-in-rtl"
+          class="auth-footer-mask"
           :src="authThemeMask"
           alt="auth-footer-mask"
           height="280"
@@ -73,59 +65,43 @@ const isConfirmPasswordVisible = ref(false)
     <VCol
       cols="12"
       md="4"
-      class="auth-card-v2 d-flex align-center justify-center"
+      class="d-flex align-center justify-center"
     >
       <VCard
         flat
         :max-width="500"
-        class="mt-12 mt-sm-0 pa-6"
+        class="mt-12 mt-sm-0 pa-4"
       >
         <VCardText>
           <h4 class="text-h4 mb-1">
-            Reset Password 🔒
+            Forgot Password? 🔒
           </h4>
           <p class="mb-0">
-            Your new password must be different from previously used passwords
+            Enter your email and we'll send you instructions to reset your password
           </p>
         </VCardText>
 
         <VCardText>
           <VForm @submit.prevent="() => {}">
             <VRow>
-              <!-- password -->
+              <!-- email -->
               <VCol cols="12">
                 <AppTextField
-                  v-model="form.newPassword"
+                  v-model="email"
                   autofocus
-                  label="New Password"
-                  placeholder="············"
-                  :type="isPasswordVisible ? 'text' : 'password'"
-                  autocomplete="password"
-                  :append-inner-icon="isPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
-                  @click:append-inner="isPasswordVisible = !isPasswordVisible"
+                  label="Email"
+                  type="email"
+                  placeholder="johndoe@email.com"
                 />
               </VCol>
 
-              <!-- Confirm Password -->
-              <VCol cols="12">
-                <AppTextField
-                  v-model="form.confirmPassword"
-                  label="Confirm Password"
-                  autocomplete="confirm-password"
-                  placeholder="············"
-                  :type="isConfirmPasswordVisible ? 'text' : 'password'"
-                  :append-inner-icon="isConfirmPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
-                  @click:append-inner="isConfirmPasswordVisible = !isConfirmPasswordVisible"
-                />
-              </VCol>
-
-              <!-- Set password -->
+              <!-- Reset link -->
               <VCol cols="12">
                 <VBtn
                   block
                   type="submit"
                 >
-                  Set New Password
+                  Send Reset Link
                 </VBtn>
               </VCol>
 
@@ -133,7 +109,7 @@ const isConfirmPasswordVisible = ref(false)
               <VCol cols="12">
                 <RouterLink
                   class="d-flex align-center justify-center"
-                  :to="{ name: 'pages-authentication-login-v2' }"
+                  :to="{ name: 'authentication-login' }"
                 >
                   <VIcon
                     icon="tabler-chevron-left"
@@ -152,5 +128,5 @@ const isConfirmPasswordVisible = ref(false)
 </template>
 
 <style lang="scss">
-@use "@core-scss/template/pages/page-auth";
+@use "@core-scss/template/pages/page-auth.scss";
 </style>

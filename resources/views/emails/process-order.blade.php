@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Status Pesanan Kamu - PAPASANS Coffe Shop</title>
+    <title>Status Pesanan Kamu - PAPASANS Coffee Shop</title>
 </head>
 
 <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif; color: #333;">
@@ -31,7 +31,7 @@
 
                             <p>Halo <strong>{{ $customer->name }}</strong>,</p>
 
-                            <p>Terima kasih telah melakukan pemesanan di <strong>PAPASANS Coffe Shop</strong>.
+                            <p>Terima kasih telah melakukan pemesanan di <strong>PAPASANS Coffee Shop</strong>.
                                 Saat ini pesananmu sedang dalam tahap <strong>proses</strong> oleh tim kami.</p>
 
                             <!-- Detail Pesanan -->
@@ -82,14 +82,14 @@
 
                             <p style="margin-top: 30px;">
                                 Salam hangat,<br>
-                                <strong>PAPASANS Coffe Shop</strong>
+                                <strong>PAPASANS Coffee Shop</strong>
                             </p>
 
                             <hr style="border: none; height: 1px; background-color: #eee; margin: 30px 0;">
 
                             <p style="font-size: 12px; color: #999; text-align: center;">
                                 Email ini dikirim secara otomatis, mohon tidak membalas email ini.<br>
-                                ©{{ date('Y') }} PAPASANS Coffe Shop Management System. All Rights Reserved
+                                ©{{ date('Y') }} PAPASANS Coffee Shop Management System. All Rights Reserved
                             </p>
                         </td>
                     </tr>

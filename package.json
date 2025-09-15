@@ -36,6 +36,7 @@
     "mapbox-gl": "3.5.2",
     "ofetch": "1.4.1",
     "pinia": "2.3.0",
+    "pinia-plugin-persistedstate": "^4.5.0",
     "prismjs": "1.29.0",
     "qrcode": "^1.5.4",
     "roboto-fontface": "0.10.0",
