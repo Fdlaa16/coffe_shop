@@ -156,25 +156,15 @@ const displayDepartment = computed(() => {
                   bordered
                 >
                   <VAvatar color="primary" variant="tonal">
-                    <template v-if="avatarPreview">
-                      <img
-                        :src="avatarPreview"
-                        alt="Avatar"
-                        style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"
-                      />
-                    </template>
-                    <VIcon v-else icon="tabler-user" />
+                    <VIcon icon="tabler-user" />
                   </VAvatar>
                 </VBadge>
               </VListItemAction>
 
               <div>
-                <!-- <h6 class="text-h6 font-weight-medium">
-                  {{ userData.fullName || userData.username }}
+                <h6 class="text-h6 font-weight-medium">
+                  Admin
                 </h6>
-                <VListItemSubtitle class="text-capitalize text-disabled">
-                  {{ userData.role }}
-                </VListItemSubtitle> -->
               </div>
             </div>
           </VListItem>

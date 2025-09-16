@@ -84,8 +84,3 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('invoice/{id}/download-receipt', [InvoiceController::class, 'downloadReceipt'])->name('invoice.download-receipt');
     Route::post('invoice/export', [InvoiceController::class, 'export'])->name('invoice.export');
 });
-
-Route::get('payment/methods', [PaymentController::class, 'getPaymentMethods']);
-Route::post('payment/create', [PaymentController::class, 'createPayment']);
-Route::post('payment/duitku/callback', [PaymentController::class, 'callback']);
-Route::post('/payment/success', [PaymentController::class, 'paymentSuccess'])->name('payment.success');

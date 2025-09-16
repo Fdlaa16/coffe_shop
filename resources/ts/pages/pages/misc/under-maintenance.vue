@@ -25,7 +25,7 @@ definePage({
         Sorry for the inconvenience but we're performing some maintenance at the moment
       </p>
 
-      <VBtn to="/">
+      <VBtn to="/authentication/login">
         Back to Home
       </VBtn>
     </div>

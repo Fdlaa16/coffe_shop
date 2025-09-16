@@ -95,22 +95,12 @@ class AuthController extends Controller
             // Validasi
             $rules = [
                 'email'         => 'required|email|unique:users,email,' . $user->id,
-                'name'          => 'required',
-                'date_of_birth' => 'required',
-                'department'    => 'required',
-                'avatar'        => 'image|mimes:jpeg,png,jpg,bmp|max:2048',
             ];
 
             $messages = [
                 'email.required'         => 'Email harus diisi',
                 'email.email'            => 'Format email tidak valid',
                 'email.unique'           => 'Email sudah digunakan',
-                'name.required'          => 'Nama harus diisi',
-                'date_of_birth.required' => 'Tanggal Lahir harus diisi',
-                'department.required'    => 'Department harus diisi',
-                'avatar.image'           => 'Avatar harus berupa gambar',
-                'avatar.mimes'           => 'Format Avatar harus jpeg, png, jpg, atau bmp',
-                'avatar.max'             => 'Ukuran Avatar maksimal 2MB',
             ];
 
             $validator = Validator::make($request->all(), $rules, $messages);
@@ -121,9 +111,6 @@ class AuthController extends Controller
 
             $updateData = [
                 'email'         => $request->email,
-                'name'          => $request->name,
-                'date_of_birth' => $request->date_of_birth,
-                'department'    => $request->department,
             ];
 
             if (!empty($request->new_password)) {

@@ -6,6 +6,7 @@ export interface InvoiceData {
   expired_date: string;
   order_id: number;
   customer_id: number;
+  table_id: number;
   subtotal: number;
   tax: number;
   total_net: number;

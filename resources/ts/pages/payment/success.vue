@@ -53,7 +53,7 @@ onMounted(async () => {
       <div v-else-if="apiError" class="text-red-500">{{ apiError }}</div>
 
       <VBtn
-        to="/"
+        to="/authentication/login"
         color="primary"
         class="mt-4"
       >

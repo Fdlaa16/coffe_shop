@@ -33,7 +33,7 @@ export default [
     children: [
       {
         title: 'Home',
-        to: 'front-pages-home',
+        to: 'root',
         target: '_blank',
       },
       {

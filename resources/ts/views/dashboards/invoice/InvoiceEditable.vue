@@ -40,6 +40,7 @@ const localData = ref<InvoiceData>({
   expired_date: '',
   order_id: 0,
   customer_id: 0,
+  table_id: 0,
   subtotal: 0,
   tax: 0,
   total_net: 0,
@@ -93,7 +94,7 @@ const customerEmail = computed(() => {
 });
 
 const tableCode = computed(() => {
-  return invoiceData.value?.table?.id || 'N/A';
+  return invoiceData.value?.table?.code || 'N/A';
 });
 
 const orderItems = computed(() => {

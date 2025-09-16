@@ -83,8 +83,9 @@ class TableController extends Controller
             ->first();
 
         $tables = $tablesQuery->get()->map(function ($table) {
-            $url = url('/front-pages/home/' . $table->id);
-            $qr = QrCode::format('png')->size(100)->generate($url);
+            $url = env('PAPASANS_URL') . "/landing-page/{$table->id}/table";
+
+            $qr = QrCode::format('png')->size(100)->generate((string) $url);
 
             $table->qr_code = 'data:image/png;base64,' . base64_encode($qr);
             $table->qr_url = $url;
@@ -244,7 +245,7 @@ class TableController extends Controller
             }
 
             // Generate QR Code URL atau data
-            $qrData = url("/table/{$table->id}");
+            $qrData = env('PAPASANS_URL') . "/landing-page/{$table->id}/table";
 
             // Load logo dari storage dan konversi ke base64
             $logoPath = public_path('images/logo/papasans.png');

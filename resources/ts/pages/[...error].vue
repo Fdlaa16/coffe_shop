@@ -24,7 +24,7 @@ definePage({
     />
 
     <VBtn
-      to="/"
+      to="/authentication/login"
       class="mb-11"
     >
       Back to Home

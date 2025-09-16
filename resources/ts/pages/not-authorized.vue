@@ -26,7 +26,7 @@ const authThemeMask = useGenerateImageVariant(miscMaskLight, miscMaskDark)
 
     <VBtn
       class="mb-11"
-      to="/"
+      to="/authentication/login"
     >
       Back To Home
     </VBtn>

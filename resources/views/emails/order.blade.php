@@ -56,6 +56,18 @@
                                         </td>
                                     </tr>
                                     <tr>
+                                        <td style="padding: 8px 0;"><strong>Total Biaya:</strong></td>
+                                        <td style="padding: 8px 0;">
+                                            Rp {{ number_format($order->subtotal ?? 0, 0, ',', '.') }}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0;"><strong>Pajak (10%):</strong></td>
+                                        <td style="padding: 8px 0;">
+                                            Rp {{ number_format($order->tax ?? 0, 0, ',', '.') }}
+                                        </td>
+                                    </tr>
+                                    <tr>
                                         <td style="padding: 8px 0;"><strong>Total Pembayaran:</strong></td>
                                         <td style="padding: 8px 0;">
                                             Rp {{ number_format($order->total_net ?? 0, 0, ',', '.') }}

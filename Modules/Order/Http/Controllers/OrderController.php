@@ -13,6 +13,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Table;
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -108,8 +109,16 @@ class OrderController extends Controller
 
                 $customer = Customer::updateOrCreate(
                     ['phone' => $request->phone],
-                    ['name' => $request->name, 'phone' => $request->phone]
+                    [
+                        'name'  => $request->name,
+                        'phone' => $request->phone,
+                    ]
                 );
+
+                if (empty($customer->code)) {
+                    $customer->code = Customer::getNextCode();
+                    $customer->save();
+                }
 
                 $user = User::updateOrCreate(
                     ['email' => $request->email],
@@ -117,7 +126,7 @@ class OrderController extends Controller
                         'name'              => $request->name,
                         'email'             => $request->email,
                         'password'          => Hash::make('default123'),
-                        'email_verified_at' => now()
+                        'email_verified_at' => now(),
                     ]
                 );
 
@@ -157,6 +166,7 @@ class OrderController extends Controller
                     'invoice_number' => Invoice::generateInvoiceNumber(),
                     'order_id'       => $order->id,
                     'customer_id'    => $customer->id,
+                    'table_id'       => $request->table_id,
                     'invoice_date'   => now(),
                     'type'           => $request->order_type,
                     'subtotal'       => $request->subtotal,
@@ -181,9 +191,41 @@ class OrderController extends Controller
                     ]);
                 }
 
-                // 8. Send email (try-catch agar tidak ganggu transaksi)
+                $logoPath = public_path('images/logo/papasans.png');
+                $base64Logo = null;
+
+                if (file_exists($logoPath)) {
+                    $type = pathinfo($logoPath, PATHINFO_EXTENSION);
+                    $data = file_get_contents($logoPath);
+                    $base64Logo = 'data:image/' . $type . ';base64,' . base64_encode($data);
+                }
+
+                $pdf = Pdf::loadView('download.invoice_receipt', [
+                    'invoice' => $invoice->load(['invoiceItems', 'customer', 'order', 'table']),
+                    'title' => 'Receipt - ' . $invoice->invoice_number,
+                    'generated_at' => now()->format('d/m/Y H:i:s'),
+                    'logo' => $base64Logo,
+                ])->setPaper([0, 0, 226.77, 566.93], 'portrait')
+                    ->setOptions([
+                        'isRemoteEnabled' => true,
+                        'isHtml5ParserEnabled' => true,
+                        'dpi' => 203,
+                        'defaultFont' => 'Arial',
+                        'margin-top' => 0,
+                        'margin-bottom' => 0,
+                        'margin-left' => 0,
+                        'margin-right' => 0,
+                    ]);
+
+                $pdfContent = $pdf->output();
+
                 try {
-                    Mail::to($user->email)->send(new OrderMail($order, $customer, $user));
+                    Mail::to($user->email)->send(
+                        (new OrderMail($order, $customer, $user))
+                            ->attachData($pdfContent, 'receipt_' . $invoice->invoice_number . '.pdf', [
+                                'mime' => 'application/pdf',
+                            ])
+                    );
                 } catch (\Exception $mailException) {
                     \Log::error('Failed to send order email: ' . $mailException->getMessage());
                 }
@@ -194,7 +236,7 @@ class OrderController extends Controller
                     'success' => true,
                     'message' => 'Order berhasil dibuat',
                     'data' => [
-                        'order' => $order->load(['customer', 'orderItems', 'table']),
+                        'order' => $order->load(['customer', 'orderItems', 'table', 'invoice']),
                         'invoice' => $invoice,
                         'customer' => $customer
                     ]

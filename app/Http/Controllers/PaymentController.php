@@ -53,7 +53,9 @@ class PaymentController extends Controller
             'customer_name' => 'required|string|max:100',
             'email' => 'nullable|email|max:100',
             'phone' => 'nullable|string|max:15',
-            'product_details' => 'required|string|'
+            'product_details' => 'required|string',
+            'return_url' => 'required|url',
+            'table_id' => 'nullable|string'
         ]);
 
         $orderId = 'ORDER-' . time() . '-' . Str::random(6);
@@ -67,8 +69,8 @@ class PaymentController extends Controller
             'phone' => $request->phone,
             'product_details' => $request->product_details,
             'callback_url' => url('/api/duitku/callback'),
-            'return_url' => url(''),
-            'expiry_period' => 1440 // 24 hours
+            'return_url' => $request->return_url,
+            'expiry_period' => 1440
         ];
 
         $response = $this->duitkuService->createTransaction($transactionData);
@@ -76,8 +78,11 @@ class PaymentController extends Controller
         if ($response['success']) {
             $data = $response['data'];
 
-            $this->saveTransactionLog($orderId, $request->all(), $data);
+            $logData = array_merge($request->all(), ['table_id' => $request->table_id]);
+            $this->saveTransactionLog($orderId, $logData, $data);
+
             $this->saveCustomerInfo($request->only(['customer_name', 'email', 'phone']));
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -145,35 +150,76 @@ class PaymentController extends Controller
         $merchantOrderId = $request->order_id;
         $resultCode = $request->result_code;
         $reference = $request->reference;
+
         Log::info('Payment Success Return:', [
             'merchantOrderId' => $merchantOrderId,
             'resultCode' => $resultCode,
             'reference' => $reference
         ]);
-        
-        // Verify payment status (optional tapi recommended)
-        if ($resultCode === '00') {
-            // Payment successful
-            $message = 'Pembayaran berhasil!';
-            $status = 'success';
-            
-            // Update order status di database jika perlu
-            // Order::where('order_id', $merchantOrderId)->update(['status' => 'paid']);
-            DB::table('payment_transactions')
-                ->where('order_id', $merchantOrderId)
-                ->update(['status' => 'paid', 'paid_at' => now()]);
-            
-        } else {
-            // Payment failed or pending
-            $message = 'Pembayaran gagal atau tertunda.';
-            $status = 'failed';
+
+        try {
+            if ($resultCode === '00') {
+                $message = 'Pembayaran berhasil!';
+                $status = 'success';
+
+                $updated = DB::table('payment_transactions')
+                    ->where('order_id', $merchantOrderId)
+                    ->update([
+                        'status' => 'paid',
+                        'paid_at' => now(),
+                        'reference' => $reference
+                    ]);
+
+                Log::info('Payment transaction updated:', [
+                    'order_id' => $merchantOrderId,
+                    'updated_rows' => $updated
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'status' => $status,
+                    'message' => $message,
+                    'data' => [
+                        'order_id' => $merchantOrderId,
+                        'reference' => $reference,
+                        'result_code' => $resultCode
+                    ]
+                ]);
+            } else {
+                $message = 'Pembayaran gagal atau tertunda.';
+                $status = 'failed';
+
+                DB::table('payment_transactions')
+                    ->where('order_id', $merchantOrderId)
+                    ->update([
+                        'status' => 'failed',
+                        'reference' => $reference
+                    ]);
+
+                return response()->json([
+                    'success' => false,
+                    'status' => $status,
+                    'message' => $message,
+                    'data' => [
+                        'order_id' => $merchantOrderId,
+                        'reference' => $reference,
+                        'result_code' => $resultCode
+                    ]
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Payment Success Error:', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error',
+                'message' => 'Terjadi kesalahan saat memverifikasi pembayaran.',
+                'data' => null
+            ], 500);
         }
-        
-        // Redirect ke home dengan parameter
-        return;
-        
-        // Atau jika ingin tampilkan halaman success dulu:
-        // return view('payment.success', compact('message', 'status', 'merchantOrderId', 'reference'));
     }
 
     /**
@@ -200,7 +246,7 @@ class PaymentController extends Controller
     {
         // Implement database save logic here
         // Example:
-      
+
         DB::table('payment_transactions')->insert([
             'order_id' => $orderId,
             'reference' => $duitkuResponse['reference'],

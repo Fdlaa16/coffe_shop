@@ -1,27 +1,36 @@
 <script setup lang="ts">
-
 import QRCode from 'qrcode'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const route = useRoute()
+const router = useRouter()
+
+// Ambil ID dari route params
+const tableId = route.params.id as string
+
+// Query parameters untuk payment return
 const merchantOrderId = route.query.merchantOrderId as string
 const resultCode = route.query.resultCode as string
 const reference = route.query.reference as string
 
-
 const isFlatSnackbarVisible = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref<'success' | 'error'>('success')
+const exportLoading = ref(false)
 const isSnackbarVisible = ref(false)
 const loading = ref(false)
 const menuLoading = ref(false)
 
+const orderData = ref(null)
+const invoiceData = ref(null)
+const customerData = ref(null)
+
 const localData = ref({
-  email: '',
   name: '',
   phone: '',
+  email: '',
   order_type: 'takeaway',
-  cartItems: [],  
+  cartItems: [],
   method: '',
   method_name: '',
   option: '',
@@ -31,7 +40,7 @@ const localData = ref({
   total_payment: 0
 })
 
-const currentPage = ref('barcode')
+const currentPage = ref('customer-form')
 
 const windowWidth = ref(window.innerWidth)
 const windowHeight = ref(window.innerHeight)
@@ -76,12 +85,13 @@ const formatPhoneNumber = (event: { target: { value: string } }) => {
 }
 
 const isFormValid = computed(() => {
-  return localData.value.name.length >= 2 && 
-         localData.value.phone.length >= 10 &&
-         (localData.value.email === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(localData.value.email))
+  return (localData.value.name?.length ?? 0) >= 2 && 
+         (localData.value.phone?.length ?? 0) >= 10 &&
+         (!localData.value.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(localData.value.email))
 })
 
 const barcodeCanvas = ref(null)
+
 const updateCalculatedValues = () => {
   const items = localData.value.cartItems
   
@@ -109,6 +119,11 @@ const resetAllData = () => {
     total_payment: 0
   }
   
+  // Reset order data
+  orderData.value = null
+  invoiceData.value = null
+  customerData.value = null
+  
   selectedCategory.value = 'all'
   searchQuery.value = ''
   showMobileSidebar.value = false
@@ -122,7 +137,9 @@ const resetAllData = () => {
 const generateBarcode = async () => {
   await nextTick()
   if (barcodeCanvas.value && typeof QRCode !== 'undefined') {
-    QRCode.toCanvas(barcodeCanvas.value, 'https://coffee-shop.com/order', {
+    // Gunakan tableId dalam QR code
+    const qrUrl = `${window.location.origin}/landing-page/${tableId}/table`
+    QRCode.toCanvas(barcodeCanvas.value, qrUrl, {
       width: 200,
       height: 200,
       margin: 2,
@@ -144,7 +161,6 @@ const submitCustomerData = async () => {
   if (valid) {
     console.log('Customer data:', localData.value)
     currentPage.value = 'catalog'
-
     await fetchMenuData()
   }
 }
@@ -195,122 +211,217 @@ const decreaseQty = (productId) => {
   }
 }
 
-// const processPayment = async () => {
-//   try {
-//     loading.value = true
-    
-//     updateCalculatedValues()
+const createDuitkuPayment = async (paymentData) => {
+  try {
+    const response = await $api('order/payment/create', {
+      method: 'POST',
+      body: paymentData
+    })
+    return response
+  } catch (error) {
+    throw error
+  }
+}
 
-//     const formData = new FormData()
-    
-//     formData.append('name', localData.value.name)
-//     formData.append('phone', localData.value.phone)
-//     formData.append('email', localData.value.email)
-    
-//     formData.append('order_type', localData.value.order_type)
+const prepareOrderData = () => {
+  return {
+    name: localData.value.name,
+    phone: localData.value.phone,
+    email: localData.value.email,
+    order_type: localData.value.order_type,
+    table_id: tableId, // Tambahkan table_id
+    cartItems: localData.value.cartItems.map(item => ({
+      menu_id: item.menu_id,
+      menu_name: item.menu_name,
+      qty: item.qty,
+      price: item.price,
+      subtotal: item.subtotal,
+      notes: item.notes,
+      size: item.size,
+      sugar_level: item.sugar_level,
+      category: item.category
+    })),
+    method: localData.value.method,
+    method_name: localData.value.method_name,
+    option: localData.value.option,
+    total_items: localData.value.total_items,
+    subtotal: localData.value.subtotal,
+    tax: localData.value.tax,
+    total_payment: localData.value.total_payment
+  }
+}
+
+const preparePaymentData = () => {
+  // ✅ Buat return URL yang benar dengan tableId dan parameter khusus
+  const returnUrl = `${window.location.origin}/landing-page/${tableId}/table`
   
-//     localData.value.cartItems.forEach((item, index) => {
-//       formData.append(`cartItems[${index}][menu_id]`, item.menu_id.toString())
-//       formData.append(`cartItems[${index}][menu_name]`, item.menu_name)
-//       formData.append(`cartItems[${index}][qty]`, item.qty.toString())
-//       formData.append(`cartItems[${index}][price]`, item.price.toString())
-//       formData.append(`cartItems[${index}][subtotal]`, item.subtotal.toString())
-//       formData.append(`cartItems[${index}][notes]`, item.notes)
-//       formData.append(`cartItems[${index}][size]`, item.size)
-//       formData.append(`cartItems[${index}][sugar_level]`, item.sugar_level)
-//       formData.append(`cartItems[${index}][category]`, item.category)
-//     })
+  return {
+    customer_name: localData.value.name,
+    email: localData.value.email,
+    phone: localData.value.phone,
+    amount: localData.value.total_payment.toString(),
+    product_details: generateProductDetails(),
+    item_details: localData.value.cartItems.map(item => ({
+      name: item.name,
+      price: parseInt(item.price),
+      quantity: parseInt(item.qty)
+    })),
+    payment_method: selectedPaymentOption.value.value,
+    table_id: tableId, // ✅ Kirim table_id
+    return_url: returnUrl // ✅ Kirim return_url yang benar
+  }
+}
 
-//     formData.append('method', localData.value.method)
-//     formData.append('method_name', localData.value.method_name)
-//     formData.append('option', localData.value.option)
+const handlePaymentError = (err) => {
+  console.error('Payment error:', err)
+  
+  const errors = err?.data?.errors
+  if (err?.status === 422 && errors) {
+    const messages = Object.values(errors).flat()
+    snackbarMessage.value = 'Validasi gagal: ' + messages.join(', ')
+  } else {
+    snackbarMessage.value = 'Gagal memproses pembayaran: ' + (err?.data?.message || err?.message || 'Unknown error')
+  }
+
+  snackbarColor.value = 'error'
+  isFlatSnackbarVisible.value = true
+}
+
+const generateProductDetails = () => {
+  const productDetails = localData.value.cartItems.map(item => 
+    `${item.name} (${item.qty}x) - Rp${formatPrice(item.price)}`
+  ).join(', ')
+  
+  return `Pesanan: ${productDetails}. Total: ${localData.value.total_items} item(s)`
+}
+
+const handlePaymentSuccess = async () => {
+  try {
+    loading.value = true
     
-//     formData.append('total_items', localData.value.total_items.toString())
-//     formData.append('subtotal', localData.value.subtotal.toString())
-//     formData.append('tax', localData.value.tax.toString())
-//     formData.append('total_payment', localData.value.total_payment.toString())
+    const pendingOrderDataStr = localStorage.getItem('pendingOrderData')
+    if (!pendingOrderDataStr) {
+      throw new Error('Data order tidak ditemukan. Silakan buat pesanan baru.')
+    }
+
+    const pendingOrderData = JSON.parse(pendingOrderDataStr)
+    const formData = new FormData()
     
-//     await $api('order/create', {
-//       method: 'POST',
-//       body: formData,
-//     })
-
-//     await new Promise(resolve => setTimeout(resolve, 500))
+    formData.append('name', pendingOrderData.name)
+    formData.append('phone', pendingOrderData.phone)
+    formData.append('email', pendingOrderData.email)
+    formData.append('order_type', pendingOrderData.order_type)
+    formData.append('table_id', tableId) // Tambahkan table_id
     
-//     currentPage.value = 'success'
+    pendingOrderData.cartItems.forEach((item, index) => {
+      formData.append(`cartItems[${index}][menu_id]`, item.menu_id.toString())
+      formData.append(`cartItems[${index}][menu_name]`, item.menu_name)
+      formData.append(`cartItems[${index}][qty]`, item.qty.toString())
+      formData.append(`cartItems[${index}][price]`, item.price.toString())
+      formData.append(`cartItems[${index}][subtotal]`, item.subtotal.toString())
+      formData.append(`cartItems[${index}][notes]`, item.notes || '')
+      formData.append(`cartItems[${index}][size]`, item.size || 'Regular')
+      formData.append(`cartItems[${index}][sugar_level]`, item.sugar_level || 'Normal')
+      formData.append(`cartItems[${index}][category]`, item.category)
+    })
+
+    formData.append('method', pendingOrderData.method)
+    formData.append('method_name', pendingOrderData.method_name)
+    formData.append('option', pendingOrderData.option)
+    formData.append('total_items', pendingOrderData.total_items.toString())
+    formData.append('subtotal', pendingOrderData.subtotal.toString())
+    formData.append('tax', pendingOrderData.tax.toString())
+    formData.append('total_payment', pendingOrderData.total_payment.toString())
     
-//   } catch (err: any) {
-//     loading.value = false 
+    if (pendingOrderData.payment_reference) {
+      formData.append('payment_reference', pendingOrderData.payment_reference)
+    }
     
-//     const errors = err?.data?.errors
-//     if (err?.status === 422 && errors) {
-//       const messages = Object.values(errors).flat()
-//       snackbarMessage.value = 'Validasi gagal: ' + messages.join(', ')
-//     } else {
-//       snackbarMessage.value =
-//         'Gagal mengirim data: ' + (err?.data?.message || err?.message || 'Unknown error')
-//     }
+    const orderResponse = await $api('order/create', {
+      method: 'POST',
+      body: formData
+    })
 
-//     snackbarColor.value = 'error'
-//     isFlatSnackbarVisible.value = true
-//   } finally {
-//     loading.value = false 
-//   }
-// }
+    if (orderResponse.success && orderResponse.data) {
+      orderData.value = orderResponse.data.order
+      invoiceData.value = orderResponse.data.invoice
+      customerData.value = orderResponse.data.customer
+      
+      localData.value.method = pendingOrderData.method
+      localData.value.method_name = pendingOrderData.method_name
+      localData.value.option = pendingOrderData.option
+    }
 
-// const paymentMethods = ref([
-//   { id: 'qris', name: 'QRIS', icon: 'tabler-qrcode', info: 'Pembayaran QRIS ke PT. Contoh QRIS' },
-//   {
-//     id: 'card',
-//     name: 'Card',
-//     icon: 'tabler-credit-card',
-//     options: ['BCA Virtual Account', 'BRI Virtual Account', 'Mandiri Virtual Account']
-//   },
-//   {
-//     id: 'ewallet',
-//     name: 'E-Wallet',
-//     icon: 'tabler-wallet',
-//     options: ['OVO', 'DANA', 'ShopeePay', 'GoPay']
-//   }
-// ])
+    localStorage.removeItem('pendingOrderData')
+    
+    resetAllData()    
+    currentPage.value = 'success'
+    
+    snackbarMessage.value = 'Pesanan berhasil dibuat!'
+    snackbarColor.value = 'success'
+    isFlatSnackbarVisible.value = true
+    
+  } catch (err) {
+    console.error('Error creating order:', err)
+    
+    let errorMessage = 'Pembayaran berhasil tetapi gagal membuat pesanan. Silakan hubungi customer service.'
+    if (err?.data?.message) {
+      errorMessage += ' Detail: ' + err.data.message
+    } else if (err?.message) {
+      errorMessage += ' Detail: ' + err.message
+    }
+    
+    snackbarMessage.value = errorMessage
+    snackbarColor.value = 'error'
+    isFlatSnackbarVisible.value = true    
+  } finally {
+    loading.value = false
+  }
+}
 
-// const selectedPayment = computed({
-//   get: () => localData.value.method,
-//   set: (value) => {
-//     localData.value.method = value
-//     localData.value.method_name = getPaymentMethodName(value)
-//     if (!value) {
-//       localData.value.option = ''
-//     }
-//   }
-// })
+const processPayment = async () => {
+  try {
+    processing.value = true
+    updateCalculatedValues()
 
-// const selectedPaymentOption = computed({
-//   get: () => localData.value.option,
-//   set: (value) => {
-//     localData.value.option = value
-//   }
-// })
+    if (!selectedPaymentOption.value) {
+      throw new Error('Pilih metode pembayaran terlebih dahulu')
+    }
+
+    const orderData = prepareOrderData()
+    const paymentData = preparePaymentData()
+
+    const paymentResponse = await createDuitkuPayment(paymentData)
+    
+    if (!paymentResponse.success) {
+      throw new Error(paymentResponse.message || 'Gagal membuat pembayaran')
+    }
+
+    const dataToSave = {
+      ...orderData,
+      payment_reference: paymentResponse.data.reference,
+      payment_url: paymentResponse.data.payment_url
+    }
+
+    // Simpan tableId di localStorage juga
+    localStorage.setItem('pendingOrderData', JSON.stringify(dataToSave))
+    localStorage.setItem('currentTableId', tableId)
+    
+    window.location.href = paymentResponse.data.payment_url
+    
+  } catch (err) {
+    processing.value = false
+    handlePaymentError(err)
+  }
+}
 
 const getPaymentMethodName = (methodId) => {
   const method = paymentMethods.value.find(m => m.id === methodId)
   return method ? method.name : ''
 }
 
-const startNewOrder = () => {
-  resetAllData()
-  currentPage.value = 'barcode'
-  generateBarcode()
-}
-
 const formatPrice = (price) => {
   return new Intl.NumberFormat('id-ID').format(price)
-}
-
-const goBackToBarcode = () => {
-  resetAllData()
-  currentPage.value = 'barcode'
-  generateBarcode()
 }
 
 const goBackToCustomerForm = () => {
@@ -348,11 +459,52 @@ const handleResize = () => {
   }
 }
 
-onMounted(() => {
-  updateTransaction()
-  resetAllData()
-  generateBarcode()
-  loadPaymentMethods()
+onMounted(async () => {
+  console.log('Route params:', route.params);
+  console.log('Route query:', route.query);
+  
+  // ✅ Cek apakah ini return dari payment dengan lebih robust
+  const merchantOrderId = route.query.merchantOrderId as string
+  const resultCode = route.query.resultCode as string
+  const reference = route.query.reference as string
+  const fromPayment = route.query.from as string
+  
+  console.log('Payment return params:', { merchantOrderId, resultCode, reference, fromPayment });
+  
+  try {
+    // ✅ Jika ada parameter payment, proses sebagai return dari payment
+    if (merchantOrderId && resultCode) {
+      console.log('Processing payment return...');
+      await updateTransaction()
+    } 
+    // ✅ Jika ada parameter 'from=payment' tapi tidak ada merchantOrderId
+    else if (fromPayment === 'payment') {
+      console.log('Return from payment but no transaction data, resetting...');
+      resetAllData()
+      currentPage.value = 'customer-form'
+      generateBarcode()
+    }
+    // ✅ Normal flow - fresh start
+    else {
+      console.log('Normal flow - fresh start');
+      resetAllData()
+      currentPage.value = 'customer-form'
+      generateBarcode()
+    }
+    
+    // ✅ Load payment methods di semua kondisi
+    await loadPaymentMethods()
+    
+  } catch (error) {
+    console.error('Error in onMounted:', error);
+    // ✅ Jika ada error, fallback ke normal flow
+    resetAllData()
+    currentPage.value = 'customer-form'
+    generateBarcode()
+    await loadPaymentMethods()
+  }
+  
+  // ✅ Setup window resize listener
   window.addEventListener('resize', handleResize)
 })
 
@@ -367,7 +519,6 @@ const closeMobileSidebar = () => {
 const gridCols = computed(() => {
   if (isMobile.value) return 2  
   if (isTablet.value) return 3  
-  
   return 4  
 })
 
@@ -426,7 +577,6 @@ const overlayStyle = computed(() => ({
 
 const menuItems = ref([])
 
-// Dynamic categories based on menu data
 const categories = computed(() => {
   const uniqueTypes = [...new Set(menuItems.value.map(item => item.type))]
   const categoryList = [{ id: 'all', name: 'All Items' }]
@@ -444,6 +594,7 @@ const categories = computed(() => {
 
 const selectedCategory = ref('all')
 const searchQuery = ref('')
+
 const fetchMenuData = async () => {
   try {
     menuLoading.value = true
@@ -503,6 +654,7 @@ const handleImageLoad = (event) => {
 }
 
 const products = computed(() => menuItems.value)
+
 const getCategoryIcon = (categoryId: string) => {
   const iconMap = {
     'all': 'tabler-apps',
@@ -571,56 +723,40 @@ const paymentForm = ref({
   phone: '',
   amount: '',
   product_details: '',
-  item_details : []
+  item_details: []
 })
 
 watch(() => currentPage.value, (newPage) => {
   if (newPage === 'payment') {
-    // Auto-fill payment form with existing data
     paymentForm.value.customer_name = localData.value.name
     paymentForm.value.email = localData.value.email
     paymentForm.value.phone = localData.value.phone
     paymentForm.value.amount = localData.value.total_payment.toString()
     
-    // Generate product details from cart items
     const productDetails = localData.value.cartItems.map(item => 
       `${item.name} (${item.qty}x) - Rp${formatPrice(item.price)}`
     ).join(', ')
     
     paymentForm.value.product_details = `Pesanan: ${productDetails}. Total: ${localData.value.total_items} item(s)`
 
-     // Generate item details (ARRAY) - untuk duitku itemDetails
-     paymentForm.value.item_details = localData.value.cartItems.map(item => ({
+    paymentForm.value.item_details = localData.value.cartItems.map(item => ({
       name: item.name,
-      price: parseInt(item.price), // pastikan integer
-      quantity: parseInt(item.qty) // pastikan integer
+      price: parseInt(item.price), 
+      quantity: parseInt(item.qty) 
     }))
   }
 })
 
-
-// Computed
 const selectedPaymentMethod = computed(() => {
   return paymentMethods.value.find(method => method.id === selectedPayment.value)
 })
 
-// const isFormValidPayment = computed(() => {
-//   const form = paymentForm.value
-//   return form.customer_name && 
-//          form.email && 
-//          form.phone && 
-//          form.amount && 
-//          form.product_details &&
-//          selectedPaymentOption.value
-// })
-
-// Methods
 const loadPaymentMethods = async () => {
   try {
     loading.value = true
     error.value = ''
     
-    const response = await $api('payment/methods', {
+    const response = await $api('order/payment/methods', {
       method: 'GET'
     })
     
@@ -650,41 +786,6 @@ const selectPaymentMethod = (methodId) => {
   }
 }
 
-const processPayment = async () => {
-  try {
-    processing.value = true
-
-    const paymentData = {
-      ...paymentForm.value,
-      payment_method: selectedPaymentOption.value.value
-    }
-
-    console.log('paymentData', paymentData)
- 
-    const response = await $api('payment/create', {
-      method: 'POST',
-      body: paymentData
-    })
-
-    if (response.success) {
-      // Tampilkan pesan sukses sebentar sebelum redirect
-      // successMessage.value = 'Pembayaran berhasil dibuat! Mengalihkan ke halaman pembayaran...'
-      
-      // Delay sedikit untuk user experience yang lebih baik
-      setTimeout(() => {
-        window.location.href = response.data.payment_url
-      }, 200)
-    } else {
-      alert('Gagal membuat pembayaran: ' + (response.message ?? 'Terjadi kesalahan'))
-    }
-  } catch (err) {
-    console.error('Error processing payment:', err)
-    alert('Terjadi kesalahan saat memproses pembayaran')
-  } finally {
-    processing.value = false
-  }
-}
-
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -694,30 +795,129 @@ const formatCurrency = (amount) => {
 }
 
 const apiError = ref<string | null>(null)
-const router = useRouter()
 
+// Fungsi updateTransaction yang sudah diperbaiki
 const updateTransaction = async () => {
-  if (merchantOrderId) {
+  if (merchantOrderId && resultCode) {
     try {
-      await $api('payment/success', {
+      loading.value = true
+      
+      const verificationResponse = await $api('order/payment/success', {
         method: 'POST',
         body: {
           order_id: merchantOrderId,
           result_code: resultCode,
-          reference,
+          reference: reference,
         },
       })
+      
+      let isSuccess = false
+      let responseMessage = ''
+      
+      console.log('verificationResponse', verificationResponse);
+      
+      if (verificationResponse && typeof verificationResponse === 'object') {
+        isSuccess = verificationResponse.success === true
+        responseMessage = verificationResponse.message || ''
+      } else {
+        isSuccess = false
+        responseMessage = 'Response tidak valid dari server'
+      }
+      
+      console.log('isSuccess', isSuccess);
+      
+      if (isSuccess) {
+        await handlePaymentSuccess()
+        
+        snackbarMessage.value = responseMessage || 'Pembayaran berhasil diverifikasi'
+        snackbarColor.value = 'success'
+        isFlatSnackbarVisible.value = true
+        
+      } else {
+        snackbarMessage.value = responseMessage || 'Pembayaran gagal atau dibatalkan'
+        snackbarColor.value = 'error'
+        isFlatSnackbarVisible.value = true
+        currentPage.value = 'payment'
+      }
 
-      //  Hapus query params dari URL
-      router.replace({ path: router.currentRoute.value.path, query: {} })
-    } catch (err: any) {
+      // PENTING: Clear query params setelah processing selesai
+      // tetapi tetap di route yang sama dengan tableId
+      await router.replace({ 
+        name: 'landing-page-id-table',
+        params: { id: tableId }
+      })
+      
+    } catch (err) {
       apiError.value = err.message || 'Failed to verify payment'
+      
+      let errorMessage = 'Gagal memverifikasi pembayaran'
+      if (err?.data?.message) {
+        errorMessage += ': ' + err.data.message
+      } else if (err?.message) {
+        errorMessage += ': ' + err.message
+      }
+      
+      snackbarMessage.value = errorMessage
+      snackbarColor.value = 'error'
+      isFlatSnackbarVisible.value = true
+      currentPage.value = 'payment'
+      
+      // Clear query params even on error
+      await router.replace({ 
+        name: 'landing-page-id-table',
+        params: { id: tableId }
+      })
+      
     } finally {
       loading.value = false
     }
   }
 }
 
+const handleDownloadReceipt = async (invoiceId) => {
+  exportLoading.value = true
+  
+  try {
+    // Gunakan invoice ID yang diterima dari parameter
+    const id = invoiceId || invoiceData.value?.id || orderData.value?.id
+    
+    if (!id) {
+      throw new Error('Invoice ID tidak ditemukan')
+    }
+
+    const response = await $api(`order/invoice/${id}/download-receipt`, {
+      method: 'GET',
+      responseType: 'blob',
+    })
+
+    const blob = new Blob([response], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    // Buat nama file dengan invoice number jika ada
+    const invoiceNumber = invoiceData.value?.invoice_number || `invoice_${id}`
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
+    link.download = `receipt_${invoiceNumber}_${timestamp}.pdf`
+    
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+
+    snackbarMessage.value = 'Receipt berhasil diunduh'
+    snackbarColor.value = 'success'
+    isFlatSnackbarVisible.value = true
+
+  } catch (err) {
+    console.error('Export error:', err)
+    snackbarMessage.value = err?.response?.data?.message || err?.message || 'Gagal mengunduh receipt'
+    snackbarColor.value = 'error'
+    isFlatSnackbarVisible.value = true
+  } finally {
+    exportLoading.value = false
+  }
+}
 
 definePage({
   meta: {
@@ -729,56 +929,6 @@ definePage({
 
 <template>
   <VContainer fluid class="pa-0 fill-height">
-      <VRow
-        v-if="currentPage === 'barcode'"
-        class="ma-0"
-        style="min-height: 100vh;"
-      >
-        <VCol
-          cols="12"
-          class="d-flex align-center justify-center"
-        >
-          <VCard
-            class="pa-8"
-            max-width="600"
-            elevation="12"
-          >
-            <VCardText class="text-center">
-              <div class="mb-6">
-                <img
-                  src="/images/logo/papasans.png"
-                  alt="logo papasans"
-                  class="me-3 logo"
-                />
-                <p class="text-body-1 text-medium-emphasis">
-                  Scan barcode untuk mulai berbelanja
-                </p>
-              </div>
-
-              <VCard
-                variant="outlined"
-                class="pa-8 mb-6"
-                style="cursor: pointer;"
-                @click="scanBarcode"
-              >
-                <canvas
-                  ref="barcodeCanvas"
-                  class="mx-auto d-block"
-                />
-                <div class="mt-4">
-                  <VIcon
-                    icon="tabler-qrcode"
-                    size="48"
-                    class="mb-2"
-                  />
-                  <p class="text-body-2">Klik untuk scan barcode</p>
-                </div>
-              </VCard>
-            </VCardText>
-          </VCard>
-        </VCol>
-      </VRow>
-
       <VRow
         v-if="currentPage === 'customer-form'"
         class="ma-0"
@@ -1709,85 +1859,47 @@ definePage({
           padding: isMobile ? '12px' : '24px',
           boxSizing: 'border-box',
           margin: '0 auto',
-          transition: 'width 0.3s ease'
+          transition: 'width 0.3s ease',
+          background: '#f9fafb' // background abu-abu lembut
         }"
       >
         <VRow class="ma-0 fill-height">
-          <VCol cols="12" class="d-flex align-center justify-center pa-4">
+          <VCol cols="12" class="d-flex align-center justify-center pa-6">
             <VCard
               class="pa-8 text-center"
-              max-width="400"
+              max-width="480"
               width="100%"
-              elevation="12"
-              rounded="md"
+              elevation="10"
+              rounded="xl"
             >
               <VCardText>
-                <div class="success-icon mb-4">
+                <!-- Logo -->
+                <div class="mb-4">
                   <img
                     src="/images/logo/papasans.png"
                     alt="logo papasans"
-                    class="logo"
+                    class="logo mb-3"
+                    style="max-width: 120px;"
                   />
                 </div>
-                
-                <h1 class="text-h4 font-weight-bold mb-3">Pembayaran Berhasil!</h1>
-                
+
+                <!-- Ikon sukses -->
+                <VIcon icon="tabler-check-circle" size="72" color="success" class="mb-4" />
+
+                <!-- Judul -->
+                <h1 class="text-h4 font-weight-bold text-success mb-3">
+                  Pembayaran Berhasil!
+                </h1>
+
+                <!-- Pesan -->
                 <p class="text-body-1 text-medium-emphasis mb-4">
-                  Terima kasih telah berbelanja. Pesanan Anda sedang diproses.
+                  Terima kasih telah berbelanja di <strong>Papasans</strong>.<br />
+                  Pesanan Anda sedang diproses.
                 </p>
-                
-                <VCard variant="outlined" class="pa-4 mb-4" rounded="lg">
-                  <div class="d-flex justify-space-between align-center mb-2">
-                    <span class="text-body-2 text-start">Total Pembayaran:</span>
-                    <span class="text-h6 font-weight-bold text-success text-end">
-                      Rp{{ formatPrice(totalPayment) }}
-                    </span>
-                  </div>
 
-                  <div class="d-flex justify-space-between align-center mb-2">
-                    <span class="text-body-2 text-start">Metode Pembayaran:</span>
-                    <span class="text-body-2 font-weight-medium text-end">
-                      {{ getPaymentMethodName(selectedPayment) }}
-                      <template v-if="selectedPaymentOption"> - {{ selectedPaymentOption }}</template>
-                    </span>
-                  </div>
-                </VCard>
-
-                <VBtn
-                  color="primary"
-                  size="large"
-                  rounded="pill"
-                  class="text-none font-weight-bold mb-3"
-                  block
-                  @click="startNewOrder"
-                >
-                  <VIcon icon="tabler-printer" start />
-                  Cetak Struk
-                </VBtn>
-                
-                <VBtn
-                  color="success"
-                  size="large"
-                  rounded="pill"
-                  class="text-none font-weight-bold mb-3"
-                  block
-                  @click="startNewOrder"
-                >
-                  <VIcon icon="tabler-plus" start />
-                  Pesan Lagi
-                </VBtn>
-                
-                <VBtn
-                  variant="outlined"
-                  size="large"
-                  rounded="pill"
-                  class="text-none"
-                  block
-                  @click="goBackToBarcode()"
-                >
-                  <VIcon icon="tabler-home" start />
-                  Kembali ke Beranda
-                </VBtn>
+                <p class="text-body-2 text-medium-emphasis">
+                  Untuk informasi lebih lanjut, akan kami informasikan kembali melalui email kami.
+                </p>
               </VCardText>
             </VCard>
           </VCol>

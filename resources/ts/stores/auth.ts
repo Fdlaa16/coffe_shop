@@ -23,7 +23,56 @@ export const useAuthStore = defineStore('auth', () => {
   const role = ref<string | null>(null)
   const loginType = ref<string | null>(null)
   const lastActivity = ref<number | null>(null)
-  const sessionTimeout = 30 * 60 * 1000 // 10 minutes in milliseconds
+  const sessionTimeout = 30 * 60 * 1000 
+
+  const AUTH_STORAGE_KEY = 'papasans-auth'
+
+  function saveToStorage() {
+    try {
+      const authData = {
+        user: user.value,
+        token: token.value,
+        role: role.value,
+        loginType: loginType.value,
+        lastActivity: lastActivity.value
+      }
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData))
+      console.log('Auth data saved to localStorage:', authData)
+    } catch (error) {
+      console.error('Failed to save auth data to localStorage:', error)
+    }
+  }
+
+  function loadFromStorage() {
+    try {
+      const storedData = localStorage.getItem(AUTH_STORAGE_KEY)
+      if (storedData) {
+        const authData = JSON.parse(storedData)
+        console.log('Loading auth data from localStorage:', authData)
+        
+        user.value = authData.user
+        token.value = authData.token
+        role.value = authData.role
+        loginType.value = authData.loginType
+        lastActivity.value = authData.lastActivity
+        
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Failed to load auth data from localStorage:', error)
+      return false
+    }
+  }
+
+  function clearStorage() {
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY)
+      console.log('Auth data cleared from localStorage')
+    } catch (error) {
+      console.error('Failed to clear auth data from localStorage:', error)
+    }
+  }
 
   function storeUserData(userData: UserData) {
     user.value = userData.user
@@ -32,7 +81,8 @@ export const useAuthStore = defineStore('auth', () => {
     loginType.value = userData.login_type
     lastActivity.value = Date.now()
     
-    // Start activity tracking
+    saveToStorage()
+    
     startActivityTracking()
   }
 
@@ -43,6 +93,8 @@ export const useAuthStore = defineStore('auth', () => {
     loginType.value = null
     lastActivity.value = null
     
+    clearStorage()
+    
     // Stop activity tracking
     stopActivityTracking()
   }
@@ -50,14 +102,27 @@ export const useAuthStore = defineStore('auth', () => {
   function updateLastActivity() {
     if (isLoggedIn.value) {
       lastActivity.value = Date.now()
+      // Update localStorage immediately
+      saveToStorage()
     }
   }
 
   // Activity tracking variables
   let activityTimer: NodeJS.Timeout | null = null
   let visibilityTimer: NodeJS.Timeout | null = null
+  let activityHandlers: Array<() => void> = []
+  let isTrackingActive = false
 
   function startActivityTracking() {
+    // Hanya start jika belum ada tracking yang aktif
+    if (isTrackingActive) {
+      console.log('Activity tracking already active')
+      return
+    }
+    
+    console.log('Starting activity tracking')
+    isTrackingActive = true
+    
     // Track user activity (mouse, keyboard, touch)
     const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click']
     
@@ -65,14 +130,18 @@ export const useAuthStore = defineStore('auth', () => {
       updateLastActivity()
     }
 
-    activityEvents.forEach(event => {
-      document.addEventListener(event, handleActivity, true)
+    // Store handlers untuk cleanup nanti
+    activityHandlers = activityEvents.map(() => handleActivity)
+    
+    activityEvents.forEach((event, index) => {
+      document.addEventListener(event, activityHandlers[index], { passive: true })
     })
 
     // Track page visibility changes
     const handleVisibilityChange = () => {
       if (document.hidden) {
         // Page is hidden, start timer
+        if (visibilityTimer) clearTimeout(visibilityTimer)
         visibilityTimer = setTimeout(() => {
           checkSessionTimeout()
         }, sessionTimeout)
@@ -88,25 +157,35 @@ export const useAuthStore = defineStore('auth', () => {
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
-    // Periodic check every minute
+    // Periodic check setiap 5 menit
     activityTimer = setInterval(() => {
-      checkSessionTimeout()
-    }, 60000) // Check every minute
+      const now = Date.now()
+      const timeSinceLastActivity = lastActivity.value ? now - lastActivity.value : 0
+      
+      // Hanya check timeout jika idle lebih dari 25 menit
+      if (timeSinceLastActivity > (25 * 60 * 1000)) {
+        checkSessionTimeout()
+      }
+    }, 5 * 60 * 1000) // Check every 5 minutes
   }
 
   function stopActivityTracking() {
+    if (!isTrackingActive) return
+    
+    console.log('Stopping activity tracking')
+    isTrackingActive = false
+    
     // Remove event listeners
     const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click']
     
-    const handleActivity = () => {
-      updateLastActivity()
-    }
-
-    activityEvents.forEach(event => {
-      document.removeEventListener(event, handleActivity, true)
+    activityEvents.forEach((event, index) => {
+      if (activityHandlers[index]) {
+        document.removeEventListener(event, activityHandlers[index])
+      }
     })
 
-    document.removeEventListener('visibilitychange', () => {})
+    // Clear handlers array
+    activityHandlers = []
 
     // Clear timers
     if (activityTimer) {
@@ -129,110 +208,98 @@ export const useAuthStore = defineStore('auth', () => {
       const now = Date.now()
       const timeSinceLastActivity = now - lastActivity.value
 
+      console.log('Checking session timeout:', {
+        timeSinceLastActivity: timeSinceLastActivity / 1000 / 60,
+        sessionTimeout: sessionTimeout / 1000 / 60
+      })
+
       if (timeSinceLastActivity > sessionTimeout) {
-        // Session expired
+        console.log('Session expired after', timeSinceLastActivity / 1000 / 60, 'minutes')
         logout('session_timeout')
-        resolve(true) // Session was expired
+        resolve(true)
       } else {
-        resolve(false) // Session still valid
+        resolve(false)
       }
     })
   }
 
-  // ========== FUNGSI UNTUK MENGAMBIL DATA USER ==========
-  // Mendapatkan data user lengkap
-  const getCurrentUser = computed(() => {
-    return user.value
-  })
-
-  // Mendapatkan nama user
-  const getUserName = computed(() => {
-    return user.value?.name || ''
-  })
-
-  // Mendapatkan email user
-  const getUserEmail = computed(() => {
-    return user.value?.email || ''
-  })
-
-  // Mendapatkan ID user
-  const getUserId = computed(() => {
-    return user.value?.id || null
-  })
-
-  // Mendapatkan role user
-  const getUserRole = computed(() => {
-    return role.value || ''
-  })
-
-  // Mendapatkan login type
-  const getLoginType = computed(() => {
-    return loginType.value || ''
-  })
-
-  // ========== FUNGSI UNTUK CHECKING STATUS LOGIN ==========
-  // Helper untuk check apakah user sudah login
-  const isLoggedIn = computed(() => {
-    return !!(user.value && token.value)
-  })
-
-  // Helper untuk check role
-  const hasRole = (requiredRole: string) => {
-    return role.value === requiredRole
+  function initializeStore() {
+    const loaded = loadFromStorage()
+    
+    if (loaded && isLoggedIn.value) {
+      
+      if (lastActivity.value) {
+        const now = Date.now()
+        const timeSinceLastActivity = now - lastActivity.value
+        
+        
+        if (timeSinceLastActivity > sessionTimeout) {
+          deleteUserData()
+        } else {
+          updateLastActivity()
+          startActivityTracking()
+        }
+      } else {
+        updateLastActivity()
+        startActivityTracking()
+      }
+    }
   }
 
-  // Helper untuk check apakah user adalah company user
-  const isCompanyUser = computed(() => {
-    return loginType.value === 'company' && (role.value === 'user')
-  })
+  // ========== COMPUTED PROPERTIES ==========
+  const getCurrentUser = computed(() => user.value)
+  const getUserName = computed(() => user.value?.name || '')
+  const getUserEmail = computed(() => user.value?.email || '')
+  const getUserId = computed(() => user.value?.id || null)
+  const getUserRole = computed(() => role.value || '')
+  const getLoginType = computed(() => loginType.value || '')
+  const isLoggedIn = computed(() => !!(user.value && token.value))
 
-  // ========== FUNGSI UNTUK ROLE-BASED ACCESS ==========
-  // Check apakah user adalah admin
-  const isAdmin = computed(() => {
-    return role.value === 'admin'
-  })
+  const hasRole = (requiredRole: string) => role.value === requiredRole
+  const isCompanyUser = computed(() => loginType.value === 'company' && role.value === 'user')
+  const isAdmin = computed(() => role.value === 'admin')
+  const isRegularUser = computed(() => role.value === 'user')
+  const canAccessAdminDashboard = computed(() => isLoggedIn.value && (role.value === 'admin' || role.value === 'super_admin'))
+  const canAccessUserPages = computed(() => isLoggedIn.value && role.value === 'user')
 
-  // Check apakah user adalah user biasa
-  const isRegularUser = computed(() => {
-    return role.value === 'user'
-  })
-
-  // Check apakah user bisa akses dashboard admin
-  const canAccessAdminDashboard = computed(() => {
-    return isLoggedIn.value && (role.value === 'admin' || role.value === 'super_admin')
-  })
-
-  // Check apakah user bisa akses halaman user
-  const canAccessUserPages = computed(() => {
-    return isLoggedIn.value && role.value === 'user'
-  })
-
-  // Function untuk logout
-  const logout = async () => {
+  const logout = async (reason?: string) => {
     try {
-      // Optional: Call API logout endpoint
-      // await $api('/logout', { method: 'POST' })
+      console.log('Logging out due to:', reason || 'manual logout')
+      
+      if (token.value) {
+        try {
+          await $api('/logout', { 
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token.value}`,
+              'Accept': 'application/json'
+            }
+          })
+        } catch (apiError) {
+          console.warn('API logout failed:', apiError)
+        }
+      }
       
       deleteUserData()
       
-      // Redirect ke halaman login sesuai dengan role sebelumnya
       const router = useRouter()
-      if (role.value === 'admin') {
-        await router.push({ name: 'authentication-login' })
-      } else {
-        await router.push({ name: 'authentication-login' })
-      }
+      await router.push({ name: 'authentication-login' })
+      
     } catch (error) {
       console.error('Logout error:', error)
-      // Tetap hapus data lokal meskipun API gagal
       deleteUserData()
     }
   }
 
-  // Initialize activity tracking if user is already logged in (for page refresh)
-  if (isLoggedIn.value) {
-    startActivityTracking()
+  const refreshSession = () => {
+    if (isLoggedIn.value) {
+      updateLastActivity()
+      console.log('Session refreshed')
+    }
   }
+
+  // Initialize store when created
+  initializeStore()
 
   return {
     // State
@@ -241,22 +308,19 @@ export const useAuthStore = defineStore('auth', () => {
     role,
     loginType,
     lastActivity,
+    sessionTimeout,
     
-    // Computed untuk mengambil data user
+    // Computed
     getCurrentUser,
     getUserName,
     getUserEmail,
     getUserId,
     getUserRole,
     getLoginType,
-    
-    // Status login
     isLoggedIn,
     isCompanyUser,
     isAdmin,
     isRegularUser,
-    
-    // Access control
     canAccessAdminDashboard,
     canAccessUserPages,
     
@@ -267,12 +331,12 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     updateLastActivity,
     checkSessionTimeout,
-  }
-}, {
-  persist: {
-    key: 'auth-store',
-    storage: localStorage,
-    paths: ['user', 'token', 'role', 'loginType', 'lastActivity']
+    refreshSession,
+    initializeStore,
+    loadFromStorage,
+    saveToStorage,
+    startActivityTracking,
+    stopActivityTracking,
   }
 })
 

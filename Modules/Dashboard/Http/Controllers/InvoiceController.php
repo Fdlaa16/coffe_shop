@@ -154,6 +154,7 @@ class InvoiceController extends Controller
             'expired_date' => $invoice->expired_date,
             'order_id' => $invoice->order_id,
             'customer_id' => $invoice->customer_id,
+            'table_id' => $invoice->table_id,
             'subtotal' => $invoice->subtotal,
             'tax' => $invoice->tax,
             'total_net' => $invoice->total_net,

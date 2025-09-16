@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { StructureData } from '../../../views/dashboards/structure/types';
+import type { UserData } from '../../../views/dashboards/user/types';
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
-console.log('authStore', authStore);
 
 const currentTab = ref('biodata')
 const loading = ref(false)
@@ -16,7 +15,7 @@ const snackbarColor = ref<'success' | 'error'>('success')
 
 const isPasswordVisible = ref(false)
 const isConfirmPasswordVisible = ref(false)
-const props = defineProps<{ data?: StructureData }>()
+const props = defineProps<{ data?: UserData }>()
 const emit = defineEmits(['submit', 'update:data'])
 
 // Form validation state
@@ -54,7 +53,7 @@ const rulesConfirmPassword = {
 }
 
 // Initialize default structure
-const getDefaultData = (): StructureData => ({
+const getDefaultData = (): UserData => ({
   id: null,
   code: '',
   name: '',
@@ -68,11 +67,11 @@ const getDefaultData = (): StructureData => ({
   }
 })
 
-const localData = ref<StructureData>(
+const localData = ref<UserData>(
   props.data ? { ...props.data } : getDefaultData()
 )
 
-const originalData = ref<StructureData>(getDefaultData())
+const originalData = ref<UserData>(getDefaultData())
 
 const avatarPreview = ref<string | null>(
   props.data?.avatar?.url ? getImageUrl(props.data.avatar.url) : null
@@ -147,9 +146,9 @@ const submitForm = async () => {
     const formData = new FormData()
     formData.append('_method', 'PUT')
 
-    formData.append('email', localData.value.user.email || '')
-    if (localData.value.user.new_password) {
-      formData.append('new_password', localData.value.user.new_password)
+    formData.append('email', localData.value.email || '')
+    if (localData.value.new_password) {
+      formData.append('new_password', localData.value.new_password)
     }
 
     const res = await $api('profile-update', {
@@ -311,19 +310,20 @@ defineExpose({
                     <!-- Email -->
                     <VCol cols="12">
                       <AppTextField
-                        v-model="localData.user.email"
+                        v-model="localData.email"
                         label="Email"
                         placeholder="Contoh: admin@gmail.com"
                         :rules="emailRules"
                         type="email"
                         required
+                        disabled
                       />
                     </VCol>
 
                     <!-- New Password -->
                     <VCol cols="12" md="6">
                       <AppTextField
-                        v-model="localData.user.new_password"
+                        v-model="localData.new_password"
                         label="Password Baru (Opsional)"
                         placeholder="············"
                         :type="isPasswordVisible ? 'text' : 'password'"
@@ -337,7 +337,7 @@ defineExpose({
                     <!-- Confirm Password -->
                     <VCol cols="12" md="6">
                       <AppTextField
-                        v-model="localData.user.confirm_password"
+                        v-model="localData.confirm_password"
                         label="Konfirmasi Password"
                         placeholder="············"
                         :type="isConfirmPasswordVisible ? 'text' : 'password'"
@@ -345,7 +345,7 @@ defineExpose({
                         :append-inner-icon="isConfirmPasswordVisible ? 'tabler-eye-off' : 'tabler-eye'"
                         @click:append-inner="isConfirmPasswordVisible = !isConfirmPasswordVisible"
                         :rules="[rulesConfirmPassword.sameAsPassword]"
-                        :disabled="!localData.user.new_password"
+                        :disabled="!localData.new_password"
                       />
                     </VCol>
                   </VRow>
