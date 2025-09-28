@@ -166,7 +166,23 @@ const submitCustomerData = async () => {
 }
 
 const addToCart = (product) => {
+  if (product.qty <= 0) {
+    snackbarMessage.value = `Maaf, ${product.name} sedang tidak tersedia`
+    snackbarColor.value = 'error'
+    isFlatSnackbarVisible.value = true
+    return
+  }
+
   const existingItem = localData.value.cartItems.find(item => item.id === product.id)
+  const currentCartQty = existingItem ? existingItem.qty : 0
+  
+  if (currentCartQty >= product.qty) {
+    snackbarMessage.value = `Maksimal ${product.qty} item untuk ${product.name}`
+    snackbarColor.value = 'warning'
+    isFlatSnackbarVisible.value = true
+    return
+  }
+
   if (existingItem) {
     existingItem.qty += 1
   } else {
@@ -182,7 +198,8 @@ const addToCart = (product) => {
       size: 'Regular',
       sugar_level: 'Normal',
       sugarLevel: 'Normal', 
-      category: product.type 
+      category: product.type,
+      max_qty: product.qty
     })
   }
   updateCalculatedValues()
@@ -195,7 +212,16 @@ const removeFromCart = (productId) => {
 
 const increaseQty = (productId) => {
   const item = localData.value.cartItems.find(item => item.id === productId)
-  if (item) {
+  const product = menuItems.value.find(menu => menu.id === productId)
+  
+  if (item && product) {
+    if (item.qty >= product.qty) {
+      snackbarMessage.value = `Maksimal ${product.qty} item untuk ${product.name}`
+      snackbarColor.value = 'warning'
+      isFlatSnackbarVisible.value = true
+      return
+    }
+    
     item.qty += 1
     item.subtotal = item.price * item.qty
     updateCalculatedValues()

@@ -148,13 +148,21 @@ class OrderController extends Controller
                         throw new \Exception("Menu dengan ID {$item['menu_id']} tidak ditemukan");
                     }
 
+                    if ($menu->qty < (int) $item['qty']) {
+                        throw new \Exception("Stok untuk {$menu->name} tidak mencukupi");
+                    }
+
+                    $menu->decrement('qty', (int) $item['qty']);
+
+                    $totalPrice = (int) $item['qty'] * (float) $item['price'];
+
                     OrderItem::create([
                         'order_id'    => $order->id,
                         'menu_id'     => $item['menu_id'],
                         'menu_name'   => $item['menu_name'],
                         'qty'         => (int) $item['qty'],
                         'unit_price'  => (float) $item['price'],
-                        'total_price' => (float) $item['subtotal'],
+                        'total_price' => $totalPrice,
                         'size'        => $item['size'] ?? 'Regular',
                         'sugar_level' => $item['sugar_level'] ?? 'Normal',
                         'notes'       => $item['notes'] ?? null,
@@ -176,13 +184,15 @@ class OrderController extends Controller
                 ]);
 
                 foreach ($request->cartItems as $item) {
+                    $totalPrice = (int) $item['qty'] * (float) $item['price'];
+
                     InvoiceItem::create([
                         'invoice_id'  => $invoice->id,
                         'menu_id'     => $item['menu_id'],
                         'menu_name'   => $item['menu_name'],
                         'qty'         => (int) $item['qty'],
                         'unit_price'  => (float) $item['price'],
-                        'total_price' => (float) $item['subtotal'],
+                        'total_price' => $totalPrice,
                         'size'        => $item['size'] ?? 'Regular',
                         'sugar_level' => $item['sugar_level'] ?? 'Normal',
                         'notes'       => $item['notes'] ?? null,

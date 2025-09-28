@@ -5,6 +5,8 @@ namespace Modules\Dashboard\Http\Controllers;
 use App\Helpers\Helper;
 use App\Http\Resources\InvoiceResource;
 use App\Models\Invoice;
+use App\Models\Order;
+use App\Models\OrderItem;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\Request;
@@ -323,69 +325,58 @@ class InvoiceController extends Controller
 
     public function export(Request $request)
     {
-        $orderByColumn = 'created_at';
+        $orderByColumn = 'orders.created_at';
         $orderByDirection = $request->input('sort', 'desc') === 'asc' ? 'asc' : 'desc';
 
-        $invoicesQuery = Invoice::query()
-            ->with(['invoiceItems', 'customer'])
-            ->withTrashed();
+        $itemsQuery = OrderItem::query()
+            ->select(
+                'order_items.*',
+                'orders.code as invoice_number',
+                'orders.status as order_status',
+                'orders.created_at as order_date',
+                'customers.name as customer_name',
+                'tables.id as table_id'
+            )
+            ->join('orders', function ($join) {
+                $join->on('order_items.order_id', '=', 'orders.id')
+                    ->whereNull('orders.deleted_at');
+            })
+            ->leftJoin('customers', 'orders.customer_id', '=', 'customers.id')
+            ->leftJoin('tables', 'orders.table_id', '=', 'tables.id');
 
         // 🔎 Filter search
-        $invoicesQuery->when(!empty($request->search), function ($q) use ($request) {
+        $itemsQuery->when(!empty($request->search), function ($q) use ($request) {
             $q->where(function ($q) use ($request) {
-                $q->where('created_at', 'like', '%' . $request->search . '%')
-                    ->orWhere('invoice_number', 'like', '%' . $request->search . '%')
-                    ->orWhere('title', 'like', '%' . $request->search . '%')
-                    ->orWhere('hashtag', 'like', '%' . $request->search . '%')
-                    ->orWhere('description', 'like', '%' . $request->search . '%')
-                    ->orWhere('link', 'like', '%' . $request->search . '%');
+                $q->where('orders.code', 'like', '%' . $request->search . '%')
+                    ->orWhere('customers.name', 'like', '%' . $request->search . '%')
+                    ->orWhere('order_items.menu_name', 'like', '%' . $request->search . '%');
             });
-        });
-
-        // 🔎 Filter status
-        $invoicesQuery->when($request->status, function ($query, $status) {
-            switch ($status) {
-                case 'in_active':
-                    $query->onlyTrashed();
-                    break;
-                case 'active':
-                    $query->whereNull('deleted_at');
-                    break;
-                case 'all':
-                default:
-                    break;
-            }
         });
 
         // 🔎 Filter tanggal
         if ($request->filled('from_date')) {
-            $invoicesQuery->where('created_at', '>=', Helper::formatDate($request->from_date, 'Y-m-d') . ' 00:00:00');
+            $itemsQuery->where('orders.created_at', '>=', Helper::formatDate($request->from_date, 'Y-m-d') . ' 00:00:00');
         }
         if ($request->filled('to_date')) {
-            $invoicesQuery->where('created_at', '<=', Helper::formatDate($request->to_date, 'Y-m-d') . ' 23:59:59');
+            $itemsQuery->where('orders.created_at', '<=', Helper::formatDate($request->to_date, 'Y-m-d') . ' 23:59:59');
         }
 
-        $invoicesQuery->orderBy($orderByColumn, $orderByDirection);
-
-        // 🔎 Buat folder kalau belum ada
-        $exportDir = 'InvoicesExport';
-        if (!is_dir(Storage::disk('public')->path($exportDir))) {
-            mkdir(Storage::disk('public')->path($exportDir), 0775, true);
-            chmod(Storage::disk('public')->path($exportDir), 0775);
-        }
+        $itemsQuery->orderBy($orderByColumn, $orderByDirection);
 
         // 🔎 Setup Excel
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
         $headers = [
-            'A1' => 'No. Invoice',
-            'B1' => 'Tanggal',
+            'A1' => 'Tanggal Order',
+            'B1' => 'No. Invoice',
             'C1' => 'Customer',
-            'D1' => 'Subtotal',
-            'E1' => 'Tax',
-            'F1' => 'Total',
-            'G1' => 'Status',
+            'D1' => 'Meja',
+            'E1' => 'Menu',
+            'F1' => 'Qty',
+            'G1' => 'Harga',
+            'H1' => 'Subtotal',
+            'I1' => 'Status',
         ];
 
         foreach ($headers as $cell => $header) {
@@ -393,46 +384,86 @@ class InvoiceController extends Controller
         }
 
         $columnWidths = [
-            'A' => 20,
-            'B' => 15,
-            'C' => 30,
+            'A' => 30,
+            'B' => 20,
+            'C' => 25,
             'D' => 15,
-            'E' => 10,
-            'F' => 15,
+            'E' => 30,
+            'F' => 10,
             'G' => 15,
+            'H' => 20,
+            'I' => 15,
         ];
 
         foreach ($columnWidths as $column => $width) {
             $sheet->getColumnDimension($column)->setWidth($width);
         }
 
-        // 🔎 Isi data
         $row = 2;
-        $invoicesQuery->chunk(1000, function ($invoices) use ($sheet, &$row) {
-            foreach ($invoices as $invoice) {
-                $sheet->setCellValue("A{$row}", $invoice->invoice_number);
-                $sheet->setCellValue("B{$row}", $invoice->created_at->format('Y-m-d'));
-                $sheet->setCellValue("C{$row}", $invoice->customer->name ?? '-');
-                $sheet->setCellValue("D{$row}", $invoice->subtotal);
-                $sheet->setCellValue("E{$row}", $invoice->tax);
-                $sheet->setCellValue("F{$row}", $invoice->total_net);
-                $sheet->setCellValue("G{$row}", $invoice->deleted_at ? 'Non Aktif' : 'Aktif');
+        $totalSubtotal = 0;
+        $totalRefund = 0;
+
+        $itemsQuery->chunk(1000, function ($items) use ($sheet, &$row, &$totalSubtotal, &$totalRefund) {
+            foreach ($items as $item) {
+                $subtotal = $item->total_price;
+
+                $sheet->setCellValue("A{$row}", $item->order_date);
+                $sheet->setCellValue("B{$row}", $item->invoice_number);
+                $sheet->setCellValue("C{$row}", $item->customer_name ?? '-');
+                $sheet->setCellValue("D{$row}", $item->table_id ?? '-');
+                $sheet->setCellValue("E{$row}", $item->menu->name);
+                $sheet->setCellValue("F{$row}", $item->qty);
+                $sheet->setCellValue("G{$row}", $item->unit_price);
+                $sheet->setCellValue("H{$row}", $item->total_price);
+
+                if ($item->order_status === 'reject') {
+                    $sheet->setCellValue("I{$row}", 'Cancel');
+                    $totalRefund += $subtotal;
+                } else {
+                    $sheet->setCellValue("I{$row}", ucfirst($item->order_status));
+                    $totalSubtotal += $subtotal;
+                }
+
+                $sheet->getStyle("G{$row}:H{$row}")
+                    ->getNumberFormat()
+                    ->setFormatCode('"Rp" #,##0');
+
                 $row++;
             }
         });
 
-        // 🔎 Simpan file
+        $sheet->setCellValue("A{$row}", 'TOTAL PENJUALAN');
+        $sheet->setCellValue("H{$row}", $totalSubtotal);
+        $sheet->getStyle("H{$row}")
+            ->getNumberFormat()
+            ->setFormatCode('"Rp" #,##0');
+        $sheet->getStyle("A{$row}:H{$row}")->getFont()->setBold(true);
+
+        $row++;
+
+        $sheet->setCellValue("A{$row}", 'TOTAL REFUND (Cancel)');
+        $sheet->setCellValue("H{$row}", $totalRefund);
+        $sheet->getStyle("H{$row}")
+            ->getNumberFormat()
+            ->setFormatCode('"Rp" #,##0');
+        $sheet->getStyle("A{$row}:H{$row}")->getFont()->setBold(true);
+
+        $row++;
+
+        $sheet->setCellValue("A{$row}", 'NETTO (Penjualan - Refund)');
+        $sheet->setCellValue("H{$row}", $totalSubtotal - $totalRefund);
+        $sheet->getStyle("H{$row}")
+            ->getNumberFormat()
+            ->setFormatCode('"Rp" #,##0');
+        $sheet->getStyle("A{$row}:H{$row}")->getFont()->setBold(true);
+
         $timestamp = now()->format('Y-m-d_H-i-s');
-        $fileName = "Invoices_Export_{$timestamp}.xlsx";
-        $filePath = Storage::disk('public')->path($exportDir . '/' . $fileName);
+        $fileName = "OrdersItems_Export_{$timestamp}.xlsx";
+        $filePath = Storage::disk('public')->path("OrdersExport/{$fileName}");
 
         $writer = new Xlsx($spreadsheet);
         $writer->save($filePath);
 
-        $fileHeaders = [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ];
-
-        return response()->download($filePath, $fileName, $fileHeaders)->deleteFileAfterSend();
+        return response()->download($filePath, $fileName)->deleteFileAfterSend();
     }
 }

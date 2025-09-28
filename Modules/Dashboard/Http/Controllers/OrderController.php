@@ -374,7 +374,7 @@ class OrderController extends Controller
                 $sheet->setCellValue("A{$row}", $order->code);
                 $sheet->setCellValue("B{$row}", $order->order_date ?? $order->created_at->format('Y-m-d'));
                 $sheet->setCellValue("C{$row}", $order->customer->name ?? '-');
-                $sheet->setCellValue("D{$row}", $order->table->name ?? '-');
+                $sheet->setCellValue("D{$row}", $order->table->id ?? '-');
                 $sheet->setCellValue("E{$row}", $order->subtotal);
                 $sheet->setCellValue("F{$row}", $order->tax);
                 $sheet->setCellValue("G{$row}", $order->total_net);
